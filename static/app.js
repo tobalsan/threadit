@@ -504,13 +504,7 @@
   }
   // toolbar: page title and the "New thread" button (shown by views that give a handler)
   var PAGE_TITLES = { '': 'Home', areas: 'Areas', area: 'Area', thread: 'Thread', context: 'Thread', attention: 'Attention', activity: 'Activity', search: 'Search', users: 'Users', admin: 'Admin' };
-  var newThreadHandler = null;
-  function setToolbar(title, onNew) {
-    document.getElementById('bartitle').textContent = title;
-    newThreadHandler = onNew || null;
-    document.getElementById('newbtn').hidden = !newThreadHandler;
-  }
-  document.getElementById('newbtn').addEventListener('click', function () { if (newThreadHandler) newThreadHandler(); });
+  function setToolbar(title) { document.getElementById('bartitle').textContent = title; }
 
   // ---------- inspector ----------
   // A thread view gives build(panel); the panel stays closed until the toolbar button opens it.
@@ -569,6 +563,7 @@
   function paletteActions() {
     var dark = document.documentElement.getAttribute('data-theme') === 'dark';
     var out = [];
+    out.push(['New thread', function () { openNewThread(); }]);
     if (inspBuild) out.push(['Toggle inspector', toggleInspector]);
     out.push([dark ? 'Switch to light mode' : 'Switch to dark mode', function () { setTheme(dark ? 'light' : 'dark'); }]);
     out.push(['Use system appearance', function () { setTheme('system'); }]);
@@ -618,6 +613,10 @@
       paletteActions().forEach(function (a) {
         var s = q ? fuzzy(q, a[0]) : 0;
         if (s >= 0) put('Actions', BOLT_ICON, a[0], 'Action', a[1], s);
+      });
+      if (q) areas.forEach(function (a) {
+        var s = fuzzy(q, 'New thread in ' + a.name);
+        if (s >= 0) put('Actions', BOLT_ICON, 'New thread in ' + a.name, 'Action', function () { openNewThread(a.id); }, s);
       });
       if (q) put('Search', 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-3.5-3.5', 'Search for “' + q + '”', 'All results', function () { goHash('#/search' + qs({ q: q })); }, 0);
       var rows = [];
@@ -678,6 +677,151 @@
   document.addEventListener('keydown', function (ev) {
     if ((ev.metaKey || ev.ctrlKey) && !ev.altKey && ev.key.toLowerCase() === 'k') { ev.preventDefault(); openPalette(); }
   });
+
+  // ---------- new thread sheet ----------
+  var LAST_AREA_KEY = 'threaddit:lastarea';
+  var AREA_COLORS = ['orange', 'blue', 'green', 'purple'];
+  var currentAreaId = null;
+  var sheet = null;
+  function areaTile(a) { return el('span', { class: 'tile c-' + AREA_COLORS[a.id % AREA_COLORS.length], 'aria-hidden': 'true', text: a.name.charAt(0).toUpperCase() }); }
+  function firstLine(text) { return String(text || '').split('\n')[0].replace(/[*`_#>]/g, '').trim(); }
+  function lastAreaId() {
+    try { return Number(localStorage.getItem(LAST_AREA_KEY + ':' + me.id)) || null; } catch (e) { return null; }
+  }
+  function rememberArea(id) { try { localStorage.setItem(LAST_AREA_KEY + ':' + me.id, String(id)); } catch (e) { /* storage unavailable */ } }
+  function sheetOutside(ev) {
+    var btn = document.getElementById('newbtn');
+    if (sheet && !sheet.node.contains(ev.target) && !btn.contains(ev.target) && !ev.target.closest('.scrim,#lightbox,#toast')) closeSheet(false);
+  }
+  function removeSheet() {
+    var s = sheet;
+    sheet = null;
+    if (s) s.node.remove();
+    document.removeEventListener('mousedown', sheetOutside, true);
+    document.getElementById('newbtn').setAttribute('aria-expanded', 'false');
+    return s;
+  }
+  function closeSheet(refocus) {
+    var s = removeSheet();
+    if (s && refocus) {
+      var back = s.prev && document.contains(s.prev) ? s.prev : document.getElementById('newbtn');
+      back.focus();
+    }
+  }
+  // areaId: preselected area; otherwise the current page's area, then the last one used
+  function openNewThread(areaId) {
+    closePop(false);
+    var prev = document.activeElement;
+    removeSheet();
+    return api('GET', '/api/areas').then(function (r) {
+      if (!me) return;
+      var want = areaId || currentAreaId || lastAreaId();
+      var cur = r.areas.filter(function (a) { return a.id === want; })[0] || null;
+      showSheet(r.areas, cur, prev, !cur);
+    }).catch(function (e) { toast(e.message || String(e), true); });
+  }
+  function showSheet(areas, cur, prev, openList) {
+    removeSheet();
+    var newBtn = document.getElementById('newbtn');
+    var title = el('input', { type: 'text', class: 'tin', required: true, maxlength: 200, autocomplete: 'off' });
+    var body = el('textarea', { required: true, maxlength: 20000 });
+    var picker = filePicker();
+    var err = el('div');
+    var areaBtn = el('button', { type: 'button', class: 'apick', 'aria-haspopup': 'listbox', 'aria-expanded': 'false',
+      'aria-label': cur ? 'Area: ' + cur.name : 'Area: choose one' },
+      cur ? areaTile(cur) : null, el('span', null, cur ? [el('b', { text: cur.name }), el('span', { class: 'ct', text: cur.active_threads + ' active' })] : el('b', { text: 'Choose an area' })),
+      el('span', { class: 'chev', 'aria-hidden': 'true', text: '▾' }));
+    var areaFld = el('div', { class: 'fld' }, el('span', { class: 'fl', text: 'Area' }), areaBtn);
+    var clearTitle = function () {}, clearBody = function () {};
+    if (cur) { clearTitle = persist(title, 'thread:' + cur.id + ':title'); clearBody = persist(body, 'thread:' + cur.id + ':body'); }
+    var form = el('form', { class: 'sheet glass', role: 'dialog', 'aria-label': 'New thread' },
+      el('h2', { text: 'New thread' }), areaFld,
+      el('div', { class: 'fld' }, el('label', { for: 'th-title', text: 'Title' }), title),
+      el('div', { class: 'fld' }, el('label', { for: 'th-body', text: 'Opening post (use @username to notify an agent)' }), mentionable(body)),
+      picker.node, err,
+      el('div', { class: 'row2' }, el('button', { type: 'button', text: 'Cancel', onclick: function () { clearTitle(); clearBody(); closeSheet(true); } }),
+        el('button', { type: 'submit', class: 'primary', text: 'Create thread ' }, el('kbd', { 'aria-hidden': 'true', text: '⌘↵' }))));
+    title.id = 'th-title'; body.id = 'th-body';
+    picker.dropTarget(form);
+    formSubmit(form, err, function () {
+      if (!cur) throw new Error('Choose an area first.');
+      return picker.upload().then(function (ids) {
+        return api('POST', '/api/threads', { area_id: cur.id, title: title.value.trim(), body: body.value, attachment_ids: ids });
+      }).then(function (r) { clearTitle(); clearBody(); rememberArea(cur.id); closeSheet(false); location.hash = '#/thread/' + r.thread.id; });
+    });
+    title.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Enter' && (ev.metaKey || ev.ctrlKey)) { ev.preventDefault(); var b = form.querySelector('button[type=submit]'); if (!b.disabled) form.requestSubmit(); }
+    });
+    form.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Escape' && !ev.defaultPrevented) { ev.stopPropagation(); closeSheet(true); }
+    });
+
+    // searchable area combobox
+    var drop = null;
+    function closeDrop(focusBtn) {
+      if (!drop) return;
+      drop.remove(); drop = null;
+      areaBtn.setAttribute('aria-expanded', 'false');
+      if (focusBtn) areaBtn.focus();
+    }
+    function openDrop() {
+      if (drop) return;
+      var items = [], sel = 0;
+      var input = el('input', { type: 'text', role: 'combobox', 'aria-expanded': 'true', 'aria-controls': 'area-list', 'aria-autocomplete': 'list', 'aria-label': 'Filter areas', placeholder: 'Find an area…', autocomplete: 'off' });
+      var list = el('div', { id: 'area-list', class: 'lst', role: 'listbox', 'aria-label': 'Areas' });
+      drop = el('div', { class: 'adrop' }, input, list);
+      function mark() {
+        Array.prototype.forEach.call(list.querySelectorAll('.opt'), function (n, i) {
+          n.setAttribute('aria-selected', String(i === sel));
+          if (i === sel) { input.setAttribute('aria-activedescendant', n.id); n.scrollIntoView({ block: 'nearest' }); }
+        });
+      }
+      function choose(a) {
+        if (cur && a.id === cur.id) { closeDrop(false); title.focus(); return; }
+        rememberArea(a.id);
+        showSheet(areas, a, prev, false);
+      }
+      function build() {
+        var q = input.value.trim();
+        clear(list);
+        items = areas.map(function (a) { return { a: a, s: q ? fuzzy(q, a.name + ' ' + firstLine(a.description)) : 0 }; })
+          .filter(function (x) { return x.s >= 0; }).sort(function (x, y) { return y.s - x.s; }).map(function (x) { return x.a; });
+        items.forEach(function (a, i) {
+          list.appendChild(el('div', { class: 'opt', role: 'option', id: 'area-opt-' + i, 'aria-selected': 'false',
+            onmousemove: function () { if (sel !== i) { sel = i; mark(); } }, onclick: function () { choose(a); } },
+            areaTile(a), el('span', { class: 'tx' }, el('b', { text: a.name }), el('small', { text: firstLine(a.description) })), el('span', { class: 'ct', text: a.active_threads + ' active' })));
+        });
+        if (!items.length) list.appendChild(el('div', { class: 'none', text: areas.length ? 'No matching area' : 'No areas yet. Create one on the Areas page.' }));
+        sel = q || !cur ? 0 : Math.max(0, items.indexOf(cur));
+        mark();
+      }
+      input.addEventListener('input', build);
+      input.addEventListener('keydown', function (ev) {
+        if (ev.key === 'ArrowDown') { ev.preventDefault(); if (items.length) { sel = (sel + 1) % items.length; mark(); } }
+        else if (ev.key === 'ArrowUp') { ev.preventDefault(); if (items.length) { sel = (sel + items.length - 1) % items.length; mark(); } }
+        else if (ev.key === 'Enter') { ev.preventDefault(); ev.stopPropagation(); if (items[sel]) choose(items[sel]); }
+        else if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); closeDrop(true); }
+        else if (ev.key === 'Tab') ev.preventDefault();
+      });
+      areaFld.appendChild(drop);
+      areaBtn.setAttribute('aria-expanded', 'true');
+      build();
+      input.focus();
+    }
+    areaBtn.addEventListener('click', function () { if (drop) closeDrop(true); else openDrop(); });
+    areaBtn.addEventListener('keydown', function (ev) { if (ev.key === 'ArrowDown') { ev.preventDefault(); openDrop(); } });
+
+    document.body.appendChild(form);
+    var r = newBtn.getBoundingClientRect();
+    form.style.top = (r.bottom + 8) + 'px';
+    form.style.right = Math.max(8, window.innerWidth - r.right) + 'px';
+    sheet = { node: form, prev: prev };
+    newBtn.setAttribute('aria-expanded', 'true');
+    document.addEventListener('mousedown', sheetOutside, true);
+    if (openList) openDrop(); else title.focus();
+  }
+  document.getElementById('newbtn').addEventListener('click', function () { if (sheet) closeSheet(true); else openNewThread(); });
+  window.addEventListener('hashchange', function () { closeSheet(false); });
 
   // ---------- auth screens ----------
   function viewAuth(note) {
@@ -750,6 +894,7 @@
     var parts = h.split('/').filter(Boolean);
     setToolbar(PAGE_TITLES[parts[0] || ''] || 'Threaddit');
     setInspector(null);
+    currentAreaId = null;
     refreshAttentionCount();
     var fn;
     if (!parts.length) fn = function () { return viewHome(params); };
@@ -768,7 +913,8 @@
       Promise.resolve().then(fn).then(function (node) {
         if (id !== navId) return;
         clear(main); if (node) main.appendChild(node);
-        if (node && node.pageTitle) setToolbar(node.pageTitle, node.onNewThread);
+        if (node && node.pageTitle) setToolbar(node.pageTitle);
+        if (node && node.areaId) currentAreaId = node.areaId;
         if (node && node.inspector) setInspector(node.inspector);
         var tgt = main.querySelector('.target');
         if (tgt) tgt.scrollIntoView({ block: 'center' }); else { document.getElementById('scroll').scrollTop = 0; main.focus({ preventScroll: true }); }
@@ -886,11 +1032,7 @@
       var root = el('div', { class: 'main-col' });
       var slot = el('div');
       page.pageTitle = area.name;
-      page.onNewThread = function () {
-        if (slot.firstChild && slot.dataset.k === 't') { clear(slot); return; }
-        clear(slot); slot.dataset.k = 't'; slot.appendChild(threadForm(area, function () { clear(slot); }));
-        var first = slot.querySelector('input'); if (first) first.focus();
-      };
+      page.areaId = area.id;
       root.appendChild(el('div', { class: 'pagehead' }, el('h1', { text: area.name }),
         el('button', { type: 'button', class: 'btn', text: 'Edit area', onclick: function () {
           if (slot.firstChild && slot.dataset.k === 'e') { clear(slot); return; }
@@ -948,24 +1090,6 @@
       return page;
     });
   }
-  function threadForm(area, close) {
-    var title = el('input', { type: 'text', required: true, maxlength: 200 });
-    var body = el('textarea', { required: true, maxlength: 20000 });
-    var picker = filePicker();
-    var err = el('div');
-    var f = el('form', { class: 'card' }, el('h2', { text: 'New thread in ' + area.name }), field('Title', title, 'th-title'),
-      field('Opening post (use @username to notify an agent)', body, 'th-body', mentionable(body)), picker.node, err, el('button', { type: 'submit', class: 'primary', text: 'Create thread' }), ' ',
-      el('button', { type: 'button', text: 'Cancel', onclick: function () { clearTitle(); clearBody(); close(); } }));
-    picker.dropTarget(f);
-    var clearTitle = persist(title, 'thread:' + area.id + ':title'), clearBody = persist(body, 'thread:' + area.id + ':body');
-    formSubmit(f, err, function () {
-      return picker.upload().then(function (ids) {
-        return api('POST', '/api/threads', { area_id: area.id, title: title.value.trim(), body: body.value, attachment_ids: ids });
-      }).then(function (r) { clearTitle(); clearBody(); location.hash = '#/thread/' + r.thread.id; });
-    });
-    return f;
-  }
-
   // one popover at a time: closes on Esc, outside click and navigation; Esc returns focus to its button
   var popEl = null, popOwner = null;
   function closePop(refocus) {
@@ -1137,6 +1261,7 @@
       var d = rs[0], users = rs[1], area = rs[2];
       var t = d.thread;
       var root = el('div', { class: 'screen' });
+      root.areaId = t.area_id;
       var ctx = { closed: !!t.closed, targetId: targetParam ? Number(targetParam) : null, added: function () { route(); }, onOpScore: function () { paintInspector(); } };
       var titleSlot = el('div');
       var isOwner = me.id === t.owner.id;
@@ -1266,6 +1391,7 @@
     return api('GET', '/api/messages/' + encodeURIComponent(id) + '/context').then(function (c) {
       var root = el('div', { class: 'screen' });
       var closed = !!c.thread.closed;
+      root.areaId = c.area.id;
       root.appendChild(el('div', { class: 'mut' }, el('a', { href: '#/area/' + areaRef(c.area), text: c.area.name })));
       root.appendChild(el('h1', null, renderInline(c.thread.title, false), ' ', modified(c.thread)));
       root.appendChild(el('div', { class: 'card' }, el('div', { class: 'mut', text: 'Area description / instructions' }), c.area.description ? renderMarkdown(c.area.description) : el('div', { class: 'body', text: '(none)' })));

@@ -154,7 +154,7 @@ def test_attachments_thumbnail_lightbox_and_download(server, browser):
         page.get_by_role("button", name="New thread").click()
         page.fill("#th-title", "With files")
         page.fill("#th-body", "see attached")
-        form = page.locator("form.card").filter(has_text="New thread in")
+        form = page.locator("form.sheet")
         form.locator("input[type=file]").set_input_files(
             [{"name": "pic.png", "mimeType": "image/png", "buffer": PNG},
              {"name": "notes.txt", "mimeType": "text/plain", "buffer": b"hello notes"}]
@@ -496,7 +496,7 @@ def test_new_thread_form_cancel_dismisses_and_discards_draft(server, browser):
         page.goto(f"{server}/#/area/cancel")
         page.get_by_role("button", name="New thread").click()
         page.fill("#th-title", "never mind")
-        page.get_by_role("button", name="Cancel").click()
+        page.get_by_role("button", name="Cancel", exact=True).click()
         expect(page.locator("#th-title")).to_have_count(0)
         page.get_by_role("button", name="New thread").click()
         expect(page.locator("#th-title")).to_have_value("")
@@ -722,7 +722,7 @@ def test_shell_nav_attention_badge_toolbar_and_collapse(server, browser):
         expect(nav.get_by_role("link", name="Admin")).to_be_visible()
         expect(nav.get_by_role("link", name="Attention").locator(".navcount")).to_have_text("2")
         expect(page.locator("#bartitle")).to_have_text("Home")
-        expect(page.locator("#newbtn")).to_be_hidden()
+        expect(page.locator("#newbtn")).to_be_visible()
         nav.get_by_role("link", name="Areas").click()
         expect(nav.get_by_role("link", name="Areas")).to_have_attribute("aria-current", "page")
         expect(page.locator("#bartitle")).to_have_text("Areas")
@@ -1052,5 +1052,72 @@ def test_command_palette_open_filter_enter_and_actions(server, browser):
         page.mouse.click(5, 5)
         expect(box).to_have_count(0)
         expect(page.locator(".scrim")).to_have_count(0)
+    finally:
+        ctx.close()
+
+
+def test_new_thread_sheet_default_area_filter_and_create(server, browser):
+    human, _ = seed_users(server)
+    alpha = call(server, "POST", "/api/areas", human, {"name": "Alpha", "description": "First **area** here. More."})
+    call(server, "POST", "/api/areas", human, {"name": "Beta", "description": "Second place"})
+    call(server, "POST", "/api/areas", human, {"name": "Gamma", "description": "Third place"})
+    make_thread(server, human, alpha["id"], "seed thread")
+    ctx, page = open_page(browser, server, human)
+    try:
+        sheet = page.get_by_role("dialog", name="New thread")
+        new = page.get_by_role("button", name="New thread")
+        filt = page.get_by_role("combobox", name="Filter areas")
+
+        # no current area and no last area: the list opens
+        new.click()
+        expect(sheet).to_be_visible()
+        expect(filt).to_be_focused()
+        expect(page.get_by_role("option")).to_have_count(3)
+        expect(page.get_by_role("option", name=re.compile("^Alpha First area here"))).to_contain_text("1 active")
+        filt.fill("gam")
+        expect(page.get_by_role("option")).to_have_count(1)
+        filt.press("Enter")
+        expect(filt).to_have_count(0)
+        expect(sheet.get_by_role("button", name="Area: Gamma")).to_be_visible()
+        expect(page.get_by_label("Title")).to_be_focused()
+        page.keyboard.press("Escape")
+        expect(sheet).to_have_count(0)
+        expect(new).to_be_focused()
+
+        # the last area is the default away from an area page
+        new.click()
+        expect(sheet.get_by_role("button", name="Area: Gamma")).to_be_visible()
+        page.get_by_label("Title").fill("kept draft")
+        page.mouse.click(5, 5)
+        expect(sheet).to_have_count(0)
+
+        # an area page wins over the last area; arrows and Enter pick another area
+        page.goto(f"{server}/#/area/alpha")
+        expect(page.locator("#bartitle")).to_have_text("Alpha")
+        new.click()
+        expect(sheet.get_by_role("button", name="Area: Alpha")).to_be_visible()
+        sheet.get_by_role("button", name="Area: Alpha").click()
+        expect(page.get_by_role("option", name=re.compile("^Alpha"))).to_have_attribute("aria-selected", "true")
+        filt.press("ArrowDown")
+        filt.press("Enter")
+        expect(sheet.get_by_role("button", name="Area: Beta")).to_be_visible()
+        # drafts are kept for each area
+        sheet.get_by_role("button", name="Area: Beta").click()
+        filt.fill("gamma")
+        filt.press("Enter")
+        expect(page.get_by_label("Title")).to_have_value("kept draft")
+
+        # create in Beta from Cmd-K; on success go to the new thread
+        page.keyboard.press("Escape")
+        page.keyboard.press("ControlOrMeta+k")
+        page.get_by_role("combobox", name="Search threads, areas, screens and actions").fill("new thread in beta")
+        page.get_by_role("option", name=re.compile("^New thread in Beta")).click()
+        expect(sheet.get_by_role("button", name="Area: Beta")).to_be_visible()
+        page.get_by_label("Title").fill("Made in sheet")
+        page.get_by_label("Opening post (use @username to notify an agent)").fill("body text")
+        page.get_by_label("Opening post (use @username to notify an agent)").press("ControlOrMeta+Enter")
+        expect(page.locator("h1.ttitle")).to_have_text("Made in sheet")
+        expect(sheet).to_have_count(0)
+        expect(page.locator(".crumb")).to_have_text("Beta")
     finally:
         ctx.close()

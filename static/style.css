@@ -347,6 +347,39 @@ main:has(.with-side){max-width:1180px}
 .palette .none{padding:22px;text-align:center;color:var(--text2)}
 .palette .pfoot{display:flex;gap:14px;padding:7px 14px;border-top:.5px solid var(--sep);font-size:12px;color:var(--text2)}
 
+/* new thread sheet: glass; the area list inside is solid */
+.tile{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;font-size:16px;font-weight:750;flex:none;background:var(--card2);color:var(--text)}
+.tile.c-orange{background:rgba(255,159,10,.2)}.tile.c-blue{background:rgba(10,132,255,.17)}.tile.c-green{background:rgba(48,209,88,.2)}.tile.c-purple{background:rgba(191,90,242,.18)}
+.sheet{position:fixed;z-index:50;width:min(480px,94vw);max-height:calc(100vh - 90px);overflow:auto;border-radius:22px;padding:16px;background:var(--glass-strong);transform-origin:top right;animation:popin .24s cubic-bezier(.3,1.4,.5,1);display:flex;flex-direction:column;gap:10px}
+.sheet h2{margin:0;font-size:17px;letter-spacing:-.01em}
+.sheet .fld{display:flex;flex-direction:column;gap:4px;position:relative}
+.sheet .fld>label,.sheet .fld>.fl{font-size:12px;font-weight:650;color:var(--text2)}
+.sheet input.tin,.sheet textarea{border:0;border-radius:12px;padding:9px 12px;font:inherit;color:var(--text);background:var(--card2);box-shadow:inset 0 0 0 .5px var(--sep);width:100%}
+.sheet textarea{min-height:110px;resize:vertical}
+.sheet .attach{margin:0}
+.apick{all:unset;box-sizing:border-box;display:flex;align-items:center;gap:10px;width:100%;padding:6px 10px;border-radius:12px;background:var(--card2);box-shadow:inset 0 0 0 .5px var(--sep);cursor:pointer}
+.apick:hover{background:var(--hover)}
+.apick:focus-visible{outline:2.5px solid var(--accent)}
+.apick .tile{width:26px;height:26px;font-size:14px;border-radius:8px}
+.apick .ct{color:var(--text2);font-size:12px;margin-left:6px}
+.apick .chev{margin-left:auto;color:var(--text2);font-size:12px}
+.adrop{position:absolute;left:0;right:0;top:100%;margin-top:6px;z-index:5;border-radius:16px;padding:6px;background:var(--card);box-shadow:0 0 0 .5px var(--sep),0 12px 32px rgba(0,0,0,.22);animation:popin .18s var(--ease);transform-origin:top left}
+.adrop input{all:unset;box-sizing:border-box;width:100%;padding:7px 10px;font-size:14px;border-bottom:.5px solid var(--sep);margin-bottom:4px;color:var(--text)}
+.adrop input::placeholder{color:var(--text2)}
+.adrop input:focus-visible{outline:0;border-bottom-color:var(--accent)}
+.adrop .lst{max-height:240px;overflow:auto}
+.adrop .opt{display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:10px;cursor:pointer}
+.adrop .opt .tile{width:30px;height:30px;font-size:15px;border-radius:9px}
+.adrop .opt .tx{flex:1;min-width:0;line-height:1.3}
+.adrop .opt .tx b{font-weight:620}
+.adrop .opt .tx small{display:block;color:var(--text2);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.adrop .opt .ct{font-size:12px;color:var(--text2);white-space:nowrap}
+.adrop .opt[aria-selected=true]{background:var(--accent);color:#fff}
+.adrop .opt[aria-selected=true] small,.adrop .opt[aria-selected=true] .ct{color:rgba(255,255,255,.9)}
+.adrop .none{padding:12px;text-align:center;color:var(--text2)}
+.sheet .row2{display:flex;align-items:center;justify-content:flex-end;gap:8px}
+.sheet .row2 .hintx{font-size:12px;color:var(--text2);flex:1}
+
 /* signed out: the sidebar and the toolbar stay hidden */
 .anon .sidebar,.anon .toolbar{display:none}
 .anon .scroll{padding-top:8vh}
