@@ -579,3 +579,45 @@ def test_area_sidebar_and_quick_vote_from_list(server, browser):
         assert side.bounding_box()["y"] > row.bounding_box()["y"]  # stacked below the list
     finally:
         ctx.close()
+
+
+def test_list_score_colors_and_debounced_importance_resort(server, browser):
+    human, _ = seed_users(server)
+    area = call(server, "POST", "/api/areas", human, {"name": "Rank", "description": "d"})
+    low = make_thread(server, human, area["id"], "low one")
+    top = make_thread(server, human, area["id"], "top one")
+    call(server, "POST", f"/api/messages/{top['op_message_id']}/votes", human, {"delta": 1})
+    ctx, page = open_page(browser, server, human)
+    try:
+        page.goto(f"{server}/#/area/rank")
+        titles = page.locator(".card.thread a.t")
+        expect(titles).to_have_text(["top one", "low one"])
+        top_imp = page.locator(".card.thread").filter(has_text="top one").locator(".imp")
+        top_score = top_imp.locator("span")
+        expect(top_imp).to_have_class(re.compile("sc-warm"))
+        low_imp = page.locator(".card.thread").filter(has_text="low one").locator(".imp")
+        low_score = low_imp.locator("span")
+        expect(low_imp).to_have_class("imp sc ")
+        up = page.get_by_role("button", name="Upvote low one")
+        up.click()
+        expect(low_score).to_have_text("1")
+        up.click()
+        expect(low_score).to_have_text("2")
+        expect(titles).to_have_text(["top one", "low one"])  # not yet: debounce pending
+        expect(titles).to_have_text(["low one", "top one"], timeout=5000)
+        for _ in range(4):
+            up.click()
+        expect(low_score).to_have_text("6")
+        expect(low_imp).to_have_class(re.compile("sc-hot"))
+        down = page.get_by_role("button", name="Downvote top one")
+        down.click()
+        down.click()
+        expect(top_score).to_have_text("-1")
+        expect(top_imp).to_have_class(re.compile("sc-cool"))
+        for _ in range(5):
+            down.click()
+        expect(top_score).to_have_text("-6")
+        expect(top_imp).to_have_class(re.compile("sc-cold"))
+        assert low["id"] != top["id"]
+    finally:
+        ctx.close()

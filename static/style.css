@@ -89,3 +89,9 @@ main:has(.with-side){max-width:1240px}
 @media(max-width:860px){.with-side{grid-template-columns:1fr}.with-side .side{position:static;max-height:none}}
 .thread .imp .qv{display:block;margin:0 auto;padding:0 6px;border:0;background:none;color:var(--mut);font-size:12px;line-height:1.2}
 .thread .imp .qv:hover{color:var(--acc)}
+.sc{transition:color .2s}
+.sc-warm{color:#f76707}
+.sc-hot{color:#b42318}
+.imp.sc-warm small,.imp.sc-warm .qv,.imp.sc-hot small,.imp.sc-hot .qv,.imp.sc-cool small,.imp.sc-cool .qv,.imp.sc-cold small,.imp.sc-cold .qv{color:inherit}
+.sc-cool{color:#98a2b3}
+.sc-cold{color:#d8dce3}

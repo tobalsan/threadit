@@ -9,6 +9,7 @@
   var MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
   var INLINE_IMAGES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
   var DELTAS = [-5, -1, 1, 5];
+  var RESORT_DELAY_MS = 2000;
   var QUICK = ['👀', '✅', '👍', '❤️', '🎉'];
   var main = document.getElementById('main');
   var me = null;
@@ -557,23 +558,28 @@
   }
 
   // ---------- area ----------
-  function threadRow(t) {
+  // list score tint: >=5 red, 1-4 orange, 0 default, -1 to -4 faded, <= -5 nearly white
+  function scoreClass(v) { return 'sc ' + (v >= 5 ? 'sc-hot' : v > 0 ? 'sc-warm' : v <= -5 ? 'sc-cold' : v < 0 ? 'sc-cool' : ''); }
+  // onVoted(): called after a quick vote changed t.importance (used to re-sort the list)
+  function threadRow(t, onVoted) {
     var link = el('a', { class: 't', href: '#/thread/' + t.id }, renderInline(t.title, true));
     var score = el('span', { text: String(t.importance) });
     // quick +/-1 on the OP (importance = OP score); closed threads are read-only
     function vote(d) {
       return t.closed ? null : el('button', { type: 'button', class: 'qv', 'aria-label': (d > 0 ? 'Upvote ' : 'Downvote ') + t.title, title: d > 0 ? '+1' : '-1', text: d > 0 ? '▲' : '▼', onclick: function (ev) {
-        act(ev.currentTarget, function () { return api('POST', '/api/messages/' + t.op_message_id + '/votes', { delta: d }).then(function (r) { t.importance = r.score; score.textContent = String(r.score); }); });
+        act(ev.currentTarget, function () { return api('POST', '/api/messages/' + t.op_message_id + '/votes', { delta: d }).then(function (r) { t.importance = r.score; score.textContent = String(r.score); imp.className = 'imp ' + scoreClass(r.score); if (onVoted) onVoted(); }); });
       } });
     }
-    return el('div', { class: 'card thread' },
-      el('div', { class: 'imp', title: 'Importance (OP score)' }, vote(1), score, el('small', { text: 'score' }), vote(-1)),
+    var imp = el('div', { class: 'imp ' + scoreClass(t.importance), title: 'Importance (OP score)' }, vote(1), score, el('small', { text: 'score' }), vote(-1));
+    var row = el('div', { class: 'card thread' }, imp,
       el('div', { class: 'grow' },
         el('div', null, t.pinned ? el('span', { class: 'badge pin', text: 'pinned' }) : null, ' ',
           t.closed ? el('span', { class: 'badge closed', text: 'closed: ' + t.closed.reason }) : null, ' ',
           link, ' ', modified(t)),
         el('div', { class: 'mut' }, t.area_name + ' · ', userTag(t.owner), ' · ' + t.message_count + ' msgs · created ' + fmt(t.created_at) + ' · active ' + fmt(t.last_activity_at)),
         t.pending_attention ? el('span', { class: 'attn', text: t.pending_attention + ' need your attention' }) : null));
+    row.thread = t;
+    return row;
   }
   function viewArea(id, params) {
     var state = params.get('state') || 'active';
@@ -615,13 +621,24 @@
           return el('option', { value: o[0], text: o[1], selected: o[0] === state }); }));
       root.appendChild(el('div', { class: 'row' }, el('label', { for: 'sortsel', text: 'Sort' }), sortSel, dated ? orderSel : null, el('label', { for: 'statesel', text: 'Show' }), stateSel));
       sortSel.id = 'sortsel'; stateSel.id = 'statesel';
-      if (list.pinned.length) { root.appendChild(el('h2', { text: 'Pinned' })); list.pinned.forEach(function (t) { root.appendChild(threadRow(t)); }); }
+      // importance sort: re-order loaded rows 2s after the last quick vote (debounced), mirroring server order
+      var resortTimer = null;
+      function resort() {
+        [pinnedRows, rows].forEach(function (box) {
+          Array.prototype.slice.call(box.children).sort(function (x, y) {
+            return (y.thread.importance - x.thread.importance) || (y.thread.id - x.thread.id);
+          }).forEach(function (n) { box.appendChild(n); });
+        });
+      }
+      function voted() { if (sort !== 'importance') return; clearTimeout(resortTimer); resortTimer = setTimeout(resort, RESORT_DELAY_MS); }
+      var pinnedRows = el('div');
+      if (list.pinned.length) { root.appendChild(el('h2', { text: 'Pinned' })); root.appendChild(pinnedRows); list.pinned.forEach(function (t) { pinnedRows.appendChild(threadRow(t, voted)); }); }
       root.appendChild(el('h2', { text: state === 'closed' ? 'Closed threads' : 'Threads' }));
       if (!list.threads.length && !list.pinned.length) root.appendChild(el('div', { class: 'empty', text: 'No threads here.' }));
       var rows = el('div'); var more = el('div'); var offset = 0;
       root.appendChild(rows); root.appendChild(more);
       function showPage(page) {
-        page.threads.forEach(function (t) { rows.appendChild(threadRow(t)); });
+        page.threads.forEach(function (t) { rows.appendChild(threadRow(t, voted)); });
         offset += page.threads.length;
         clear(more);
         if (page.has_more) more.appendChild(el('button', { type: 'button', text: 'Load more threads', onclick: function (ev) {
