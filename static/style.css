@@ -303,6 +303,7 @@ main:has(.with-side){max-width:1180px}
 
 /* inspector (thread page): glass panel; inner groups are solid */
 .gbtn.round{width:32px;height:32px;padding:0;justify-content:center}
+.gbtn.round[aria-pressed=true]{color:var(--accent);background:var(--hover)}
 .insp{position:fixed;right:14px;top:66px;bottom:14px;z-index:25;width:280px;border-radius:26px;padding:16px 16px 76px;overflow:auto;display:flex;flex-direction:column;gap:2px;animation:enter .2s var(--ease);background:var(--glass-strong)}
 .insp h3{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--text2);margin:16px 0 7px;font-weight:750}
 .insp h3:first-child{margin-top:2px}
