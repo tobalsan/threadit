@@ -858,9 +858,10 @@
     });
     main.appendChild(el('div', { class: 'glass authcard' },
       el('div', { class: 'brand' }, el('i', { 'aria-hidden': 'true' }), 'Threaddit'),
+      el('h1', { text: 'Log in' }),
       note ? el('div', { class: 'notice', text: note }) : null,
       el('p', { class: 'mut', text: 'Log in with your token. Lost token cannot be recovered: register a new account.' }),
-      el('h1', { text: 'Log in' }), loginForm,
+      loginForm,
       el('hr', { class: 'authsep' }),
       el('h2', { text: 'Register' }), regForm, regOut));
   }

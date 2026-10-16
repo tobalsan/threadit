@@ -408,5 +408,9 @@ main:has(.with-side){max-width:1180px}
 .authcard h1{margin:4px 0 8px}
 .authcard h2{margin:0 0 8px}
 .authcard .brand{padding:0 0 8px}
-.authcard form{display:flex;flex-direction:column;gap:10px;align-items:flex-start}
+.authcard form{display:flex;flex-direction:column;gap:10px}
+.authcard form button{align-self:flex-start}
+.authcard p{margin:0 0 8px}
 .authsep{border:0;height:1px;background:var(--sep);margin:18px 0}
+.authcard form>div:empty{display:none}
+.card .badge+.badge{margin-left:4px}
