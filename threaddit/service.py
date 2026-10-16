@@ -1,0 +1,83 @@
+"""Write-side helpers shared by routes."""
+
+import sqlite3
+
+from threaddit.attention import acknowledge_human, record_attention
+from threaddit.core import ApiError, now
+
+
+def add_event(
+    conn: sqlite3.Connection,
+    kind: str,
+    actor_id: int,
+    area_id: int | None = None,
+    thread_id: int | None = None,
+    message_id: int | None = None,
+    detail: str = "",
+) -> None:
+    conn.execute(
+        "INSERT INTO events (kind, actor_id, area_id, thread_id, message_id, detail, created_at)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (kind, actor_id, area_id, thread_id, message_id, detail, now()),
+    )
+
+
+def get_thread_row(conn: sqlite3.Connection, thread_id: int) -> sqlite3.Row:
+    row = conn.execute("SELECT * FROM threads WHERE id = ?", (thread_id,)).fetchone()
+    if row is None:
+        raise ApiError(404, "thread_not_found", f"Thread {thread_id} does not exist.")
+    return row
+
+
+def get_message_row(conn: sqlite3.Connection, message_id: int) -> sqlite3.Row:
+    row = conn.execute("SELECT * FROM messages WHERE id = ?", (message_id,)).fetchone()
+    if row is None:
+        raise ApiError(404, "message_not_found", f"Message {message_id} does not exist.")
+    return row
+
+
+def require_open(thread: sqlite3.Row) -> None:
+    if thread["closed_reason"]:
+        raise ApiError(
+            409,
+            "thread_closed",
+            f"Thread {thread['id']} is closed ({thread['closed_reason']}) and read-only. "
+            f"Reopen it with POST /api/threads/{thread['id']}/reopen before changing it.",
+        )
+
+
+def insert_message(
+    conn: sqlite3.Connection,
+    thread: sqlite3.Row,
+    author: sqlite3.Row,
+    body: str,
+    parent_id: int | None = None,
+    is_op: bool = False,
+) -> int:
+    parent_author_id = None
+    if parent_id is not None:
+        parent = conn.execute(
+            "SELECT thread_id, author_id FROM messages WHERE id = ?", (parent_id,)
+        ).fetchone()
+        if parent is None or parent["thread_id"] != thread["id"]:
+            raise ApiError(
+                422, "invalid_parent", "parent_id must be a message in the same thread."
+            )
+        parent_author_id = parent["author_id"]
+    ts = now()
+    message_id = conn.execute(
+        "INSERT INTO messages (thread_id, parent_id, author_id, body, created_at, is_op)"
+        " VALUES (?, ?, ?, ?, ?, ?)",
+        (thread["id"], parent_id, author["id"], body, ts, int(is_op)),
+    ).lastrowid
+    record_attention(conn, message_id, author, parent_author_id, body)
+    if parent_id is not None:
+        acknowledge_human(conn, author, parent_id)
+    conn.execute(
+        "UPDATE threads SET last_activity_at = ? WHERE id = ?", (ts, thread["id"])
+    )
+    if not is_op:
+        add_event(
+            conn, "message_posted", author["id"], thread["area_id"], thread["id"], message_id
+        )
+    return message_id
