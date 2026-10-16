@@ -120,7 +120,7 @@
   function fmtSize(n) { return n < 1024 ? n + ' B' : n < 1048576 ? Math.round(n / 102.4) / 10 + ' KB' : Math.round(n / 104857.6) / 10 + ' MB'; }
 
   // ---------- markdown (safe subset: builds DOM nodes, never parses HTML) ----------
-  var INLINE_RE = /`([^`\n]+)`|\[([^\]\n]+)\]\(([^)\s]+)\)|\*\*(.+?)\*\*|\b__(.+?)__\b|\*([^*\s](?:[^*]*[^*\s])?)\*|\b_([^_\s](?:[^_]*[^_\s])?)_\b/;
+  var INLINE_RE = /`([^`\n]+)`|\[([^\]\n]+)\]\(([^)\s]+)\)|\*\*(.+?)\*\*|\b__(.+?)__\b|\*([^*\s](?:[^*]*[^*\s])?)\*|\b_([^_\s](?:[^_]*[^_\s])?)_\b|(https?:\/\/[^\s<>"]+)/;
   var BLOCK_START = /^(```|#{1,6}\s|\s*>|\s*[-*+]\s+|\s*\d+[.)]\s+)/;
   function safeHref(u) {
     if (/[\u0000-\u0020\u007f\\]/.test(u)) return null;
@@ -134,7 +134,15 @@
       if (!m) { parent.appendChild(document.createTextNode(rest)); return; }
       if (m.index) parent.appendChild(document.createTextNode(rest.slice(0, m.index)));
       rest = rest.slice(m.index + m[0].length);
-      if (m[1] !== undefined) {
+      if (m[8] !== undefined) {
+        // bare URL: leave trailing punctuation (and an unbalanced closing paren) outside the link
+        var url = m[8], tail = url.match(/[.,;:!?'*_]+$|\)+$/);
+        while (tail && (tail[0][0] !== ')' || (url.match(/\(/g) || []).length < (url.match(/\)/g) || []).length)) {
+          url = url.slice(0, -1); rest = tail[0].slice(-1) + rest; tail = url.match(/[.,;:!?'*_]+$|\)+$/);
+        }
+        var bare = opts.noLinks ? null : safeHref(url);
+        parent.appendChild(bare ? el('a', { href: bare, rel: 'noopener noreferrer', target: '_blank', text: url }) : document.createTextNode(url));
+      } else if (m[1] !== undefined) {
         parent.appendChild(el('code', { text: m[1] }));
       } else if (m[2] !== undefined) {
         var href = opts.noLinks ? null : safeHref(m[3]);

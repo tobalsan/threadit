@@ -501,3 +501,28 @@ def test_new_thread_form_cancel_dismisses_and_discards_draft(server, browser):
         expect(page.locator("#th-title")).to_have_value("")
     finally:
         ctx.close()
+
+
+def test_bare_urls_become_links(server, browser):
+    human, _ = seed_users(server)
+    area = call(server, "POST", "/api/areas", human, {"name": "Links", "description": "d"})
+    body = (
+        "Report at https://docs.example.com/d/1EN9-_IsTa/edit?tab=t.d2o (need account).\n"
+        "Wiki https://en.wikipedia.org/wiki/Foo_(bar), and `https://not.a.link` in code."
+    )
+    thread = make_thread(server, human, area["id"], "see https://title.example", body)
+    ctx, page = open_page(browser, server, human)
+    try:
+        page.goto(f"{server}/#/thread/{thread['id']}")
+        msg = page.locator(".msg").first
+        links = msg.locator(".msgbody a[target=_blank]")
+        expect(links).to_have_count(2)
+        assert [links.nth(i).get_attribute("href") for i in range(2)] == [
+            "https://docs.example.com/d/1EN9-_IsTa/edit?tab=t.d2o",
+            "https://en.wikipedia.org/wiki/Foo_(bar)",
+        ]
+        assert links.first.get_attribute("rel") == "noopener noreferrer"
+        expect(msg.locator("code")).to_have_text("https://not.a.link")
+        expect(page.get_by_role("heading", name="see https://title.example")).to_be_visible()
+    finally:
+        ctx.close()
