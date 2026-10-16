@@ -97,8 +97,8 @@ All require the bearer header and an approved account unless noted.
   `importance` is the OP message's score only; reply scores do not count. To change a thread's importance, vote on
   `op_message_id`. `pending_attention` is the count of the viewing account's own unacknowledged messages in the thread
   (0 when the thread is closed).
-- `GET /api/threads?area_id=&state=active|closed|all&sort=created|activity|importance&limit=&offset=`
-  Defaults `state=active`, `sort=importance`. Closed threads only with `state=closed|all`.
+- `GET /api/threads?area_id=&state=active|closed|all&sort=created|activity|importance&order=desc|asc&limit=&offset=`
+  Defaults `state=active`, `sort=importance`, `order=desc` (`asc` = oldest first for `created`/`activity`). Closed threads only with `state=closed|all`.
 - `POST /api/threads` `{"area_id": int, "title": 1-200, "body": 1-20000, "attachment_ids"?: [int, max 10]}` -> 201 thread detail; body becomes the OP message.
 - `PATCH /api/threads/{id}` `{"title": 1-200}` -> summary. Owner only (403 `not_owner`); closed thread 409 `thread_closed`.
 - `GET /api/threads/{id}` -> `{thread, area, messages:[message]}`; all messages flat ordered by id; build the tree from `parent_id`. Works for closed threads.

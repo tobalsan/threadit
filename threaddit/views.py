@@ -38,9 +38,9 @@ LEFT JOIN users cb ON cb.id = t.closed_by
 """
 
 THREAD_ORDERS = {
-    "created": "t.id DESC",
-    "activity": "t.last_activity_at DESC, t.id DESC",
-    "importance": "op.score DESC, t.id DESC",
+    "created": "t.id {d}",
+    "activity": "t.last_activity_at {d}, t.id {d}",
+    "importance": "op.score {d}, t.id {d}",
 }
 
 
@@ -148,8 +148,10 @@ def fetch_threads(
     sort: str = "activity",
     limit: int | None = None,
     offset: int = 0,
+    order: str = "desc",
 ) -> list[dict]:
-    sql = f"{_THREAD_SQL} WHERE {where} ORDER BY {THREAD_ORDERS[sort]}"
+    direction = {"asc": "ASC", "desc": "DESC"}[order]
+    sql = f"{_THREAD_SQL} WHERE {where} ORDER BY {THREAD_ORDERS[sort].format(d=direction)}"
     args: tuple = (viewer_id, *params)
     if limit is not None:
         sql += " LIMIT ? OFFSET ?"

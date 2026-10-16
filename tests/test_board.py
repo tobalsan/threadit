@@ -103,7 +103,14 @@ def test_sorting_and_pinning(admin, alice, area):
     assert ids("created") == [c, b, a]
     assert ids("activity") == [a, c, b]
     assert ids("importance") == [a, b, c]
+    def asc(sort):
+        listing = admin.ok("GET", "/api/threads", params={"sort": sort, "order": "asc"})
+        return [t["id"] for t in listing["threads"]]
+
+    assert asc("created") == [a, b, c]
+    assert asc("activity") == [b, c, a]
     assert admin.get("/api/threads", params={"sort": "bogus"}).status_code == 422
+    assert admin.get("/api/threads", params={"order": "up"}).status_code == 422
     # pin: owner only, separate group
     assert alice.call("PUT", f"/api/threads/{b}/pin", json={"pinned": True}).status_code == 403
     pinned = admin.ok("PUT", f"/api/threads/{b}/pin", {"pinned": True})
@@ -320,3 +327,4 @@ def test_persistence_across_restart(board, admin, alice, area):
     assert alice.attention("unacknowledged", include_closed=True)
     nxt = board.client.post("/api/register", json={"username": "second", "account_type": "human"}).json()
     assert nxt["status"] == "pending"
+

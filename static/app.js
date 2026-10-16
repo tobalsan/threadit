@@ -529,8 +529,10 @@
   function viewArea(id, params) {
     var state = params.get('state') || 'active';
     var sort = params.get('sort') || 'importance';
+    var dated = sort === 'created' || sort === 'activity';
+    var order = dated && params.get('order') === 'asc' ? 'asc' : 'desc';
     return api('GET', '/api/areas/' + encodeURIComponent(id)).then(function (area) {
-      return api('GET', '/api/threads' + qs({ area_id: area.id, state: state, sort: sort, limit: PAGE })).then(function (list) { return [area, list]; });
+      return api('GET', '/api/threads' + qs({ area_id: area.id, state: state, sort: sort, order: order, limit: PAGE })).then(function (list) { return [area, list]; });
     }).then(function (rs) {
       var area = rs[0], list = rs[1];
       var root = el('div');
@@ -550,14 +552,17 @@
       root.appendChild(el('div', { class: 'card' }, el('div', { class: 'mut', text: 'Area description / instructions' }),
         area.description ? renderMarkdown(area.description) : el('div', { class: 'body', text: '(none)' })));
       root.appendChild(slot);
-      function go(s, o) { location.hash = '#/area/' + id + qs({ state: s, sort: o }); }
-      var sortSel = el('select', { onchange: function () { go(state, sortSel.value); } },
+      function go(s, o, d) { location.hash = '#/area/' + id + qs({ state: s, sort: o, order: d === 'asc' ? 'asc' : '' }); }
+      var sortSel = el('select', { onchange: function () { go(state, sortSel.value, order); } },
         [['importance', 'Importance'], ['activity', 'Recent activity'], ['created', 'Created']].map(function (o) {
           return el('option', { value: o[0], text: o[1], selected: o[0] === sort }); }));
-      var stateSel = el('select', { onchange: function () { go(stateSel.value, sort); } },
+      var orderSel = el('select', { id: 'ordersel', 'aria-label': 'Order', onchange: function () { go(state, sort, orderSel.value); } },
+        [['desc', 'Newest first'], ['asc', 'Oldest first']].map(function (o) {
+          return el('option', { value: o[0], text: o[1], selected: o[0] === order }); }));
+      var stateSel = el('select', { onchange: function () { go(stateSel.value, sort, order); } },
         [['active', 'Active'], ['closed', 'Closed only'], ['all', 'Active + closed']].map(function (o) {
           return el('option', { value: o[0], text: o[1], selected: o[0] === state }); }));
-      root.appendChild(el('div', { class: 'row' }, el('label', { for: 'sortsel', text: 'Sort' }), sortSel, el('label', { for: 'statesel', text: 'Show' }), stateSel));
+      root.appendChild(el('div', { class: 'row' }, el('label', { for: 'sortsel', text: 'Sort' }), sortSel, dated ? orderSel : null, el('label', { for: 'statesel', text: 'Show' }), stateSel));
       sortSel.id = 'sortsel'; stateSel.id = 'statesel';
       if (list.pinned.length) { root.appendChild(el('h2', { text: 'Pinned' })); list.pinned.forEach(function (t) { root.appendChild(threadRow(t)); }); }
       root.appendChild(el('h2', { text: state === 'closed' ? 'Closed threads' : 'Threads' }));
@@ -570,7 +575,7 @@
         clear(more);
         if (page.has_more) more.appendChild(el('button', { type: 'button', text: 'Load more threads', onclick: function (ev) {
           act(ev.currentTarget, function () {
-            return api('GET', '/api/threads' + qs({ area_id: area.id, state: state, sort: sort, limit: PAGE, offset: offset })).then(showPage);
+            return api('GET', '/api/threads' + qs({ area_id: area.id, state: state, sort: sort, order: order, limit: PAGE, offset: offset })).then(showPage);
           });
         } }));
       }

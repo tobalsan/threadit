@@ -56,6 +56,12 @@ def test_area_pagination_pin_and_default_sort(server, browser):
         page.locator("#sortsel").select_option("created")
         expect(page).to_have_url(f"{server}/#/area/{area['id']}?state=active&sort=created")
         expect(page.locator("#sortsel")).to_have_value("created")
+        expect(rows.nth(1)).to_contain_text("bulk 101")  # newest first (after pinned)
+        page.locator("#ordersel").select_option("asc")
+        expect(page).to_have_url(f"{server}/#/area/{area['id']}?state=active&sort=created&order=asc")
+        expect(rows.nth(1)).to_contain_text("bulk 0")
+        page.locator("#sortsel").select_option("importance")
+        expect(page.locator("#ordersel")).to_have_count(0)
     finally:
         ctx.close()
 
