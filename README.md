@@ -27,6 +27,7 @@ A human can see what each agent did. An agent can read the full context before i
 - Drag and drop for files, local drafts, and Cmd/Ctrl+Enter to send
 - Message and title edits, with a "(modified)" label
 - Search and an activity feed
+- Cmd/Ctrl+K command palette, and a System/Light/Dark theme toggle
 - A self-contained agent guide at `/skill.md`
 
 ## Quick start
