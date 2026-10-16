@@ -457,14 +457,17 @@
     Attention: ['#ff375f', 'M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 21h4'], Activity: ['#30a14e', 'M3 12h4l3-8 4 16 3-8h4'],
     Users: ['#bf5af2', 'M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM2 20c0-4 3-6 7-6s7 2 7 6M17 5a3 3 0 0 1 0 6M19 14c2 .7 3 2.5 3 5'],
     Admin: ['#7c7c82', 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z'] };
-  function navIcon(name) {
+  function svgIcon(d) {
     var svg = document.createElementNS(SVG_NS, 'svg');
     var path = document.createElementNS(SVG_NS, 'path');
     [['viewBox', '0 0 24 24'], ['fill', 'none'], ['stroke', 'currentColor'], ['stroke-width', '1.8'], ['stroke-linecap', 'round'], ['stroke-linejoin', 'round'], ['aria-hidden', 'true']]
       .forEach(function (a) { svg.setAttribute(a[0], a[1]); });
-    path.setAttribute('d', NAV_ICONS[name][1]);
+    path.setAttribute('d', d);
     svg.appendChild(path);
-    return el('span', { class: 'ic', style: 'color:' + NAV_ICONS[name][0] }, svg);
+    return svg;
+  }
+  function navIcon(name) {
+    return el('span', { class: 'ic', style: 'color:' + NAV_ICONS[name][0] }, svgIcon(NAV_ICONS[name][1]));
   }
   var attentionCount = 0;
   function refreshAttentionCount() {
@@ -545,6 +548,135 @@
   });
   document.addEventListener('keydown', function (ev) {
     if (ev.key === 'Escape' && !document.getElementById('lightbox')) closeInspector(true);
+  });
+
+  // ---------- command palette ----------
+  var THREAD_ICON = 'M4 5h16v11H9l-5 4z', BOLT_ICON = 'M13 3 5 14h6l-1 7 8-11h-6z';
+  var PALETTE_GROUPS = ['Threads', 'Areas', 'Screens', 'Actions', 'Search'];
+  var PALETTE_GROUP_MAX = 6;
+  var PALETTE_DEBOUNCE_MS = 200;
+  var palette = null;
+  // subsequence match: higher is better, -1 means no match
+  function fuzzy(q, s) {
+    q = q.toLowerCase(); s = s.toLowerCase();
+    var qi = 0, score = 0, run = 0, last = -2;
+    for (var i = 0; i < s.length && qi < q.length; i++) {
+      if (s[i] === q[qi]) { score += 1 + (i === 0 || s[i - 1] === ' ' ? 3 : 0) + (last === i - 1 ? 2 + run : 0); run = last === i - 1 ? run + 1 : 0; last = i; qi++; }
+    }
+    return qi === q.length ? score - s.length * 0.01 : -1;
+  }
+  function goHash(h) { if (location.hash === h) route(); else location.hash = h; }
+  function paletteActions() {
+    var dark = document.documentElement.getAttribute('data-theme') === 'dark';
+    var out = [];
+    if (inspBuild) out.push(['Toggle inspector', toggleInspector]);
+    out.push([dark ? 'Switch to light mode' : 'Switch to dark mode', function () { setTheme(dark ? 'light' : 'dark'); }]);
+    out.push(['Use system appearance', function () { setTheme('system'); }]);
+    return out;
+  }
+  function closePalette(skipFocus) {
+    if (!palette) return;
+    var p = palette;
+    palette = null;
+    clearTimeout(p.timer);
+    p.node.remove();
+    if (!skipFocus && p.prev && document.contains(p.prev)) p.prev.focus();
+  }
+  function openPalette() {
+    if (!me) return;
+    if (palette) { closePalette(false); return; }
+    closePop(false);
+    var prev = document.activeElement, sel = 0, flat = [], seq = 0, shown = null;
+    var threads = [], areas = [];
+    var screens = [['Home', '#/'], ['Areas', '#/areas'], ['Attention', '#/attention'], ['Activity', '#/activity'], ['Users', '#/users']].concat(me.is_superadmin ? [['Admin', '#/admin']] : []);
+    var input = el('input', { type: 'text', role: 'combobox', 'aria-expanded': 'true', 'aria-controls': 'pal-list', 'aria-autocomplete': 'list', 'aria-label': 'Search threads, areas, screens and actions',
+      placeholder: 'Search threads, areas, actions…', autocomplete: 'off', spellcheck: 'false' });
+    var list = el('div', { id: 'pal-list', class: 'res', role: 'listbox', 'aria-label': 'Results' });
+    var box = el('div', { class: 'palette glass', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Command palette' },
+      el('div', { class: 'pin-row' }, svgIcon('M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-3.5-3.5'), input, el('kbd', { 'aria-hidden': 'true', text: 'esc' })), list,
+      el('div', { class: 'pfoot', 'aria-hidden': 'true' }, el('span', null, el('kbd', { text: '↑↓' }), ' select'), el('span', null, el('kbd', { text: '↵' }), ' open'), el('span', null, el('kbd', { text: 'esc' }), ' close')));
+    var scrim = el('div', { class: 'scrim' }, box);
+    function mark() {
+      Array.prototype.forEach.call(list.querySelectorAll('.it'), function (n, i) {
+        n.setAttribute('aria-selected', String(i === sel));
+        if (i === sel) { input.setAttribute('aria-activedescendant', n.id); n.scrollIntoView({ block: 'nearest' }); }
+      });
+    }
+    function pick(it) { closePalette(true); it.run(); }
+    function build(resetSel) {
+      var q = input.value.trim(), groups = {};
+      function put(g, icon, label, sub, run, score) { (groups[g] = groups[g] || []).push({ icon: icon, label: label, sub: sub, run: run, s: score }); }
+      threads.forEach(function (t) { put('Threads', THREAD_ICON, t.title, t.area_name, function () { goHash('#/thread/' + t.id); }, 0); });
+      if (q) areas.forEach(function (a) {
+        var s = fuzzy(q, a.name);
+        if (s >= 0) put('Areas', NAV_ICONS.Areas[1], a.name, a.active_threads + ' active', function () { goHash('#/area/' + areaRef(a)); }, s);
+      });
+      screens.forEach(function (sc) {
+        var s = q ? fuzzy(q, sc[0]) : 0;
+        if (s >= 0) put('Screens', NAV_ICONS[sc[0]][1], sc[0], 'Go to', function () { goHash(sc[1]); }, s);
+      });
+      paletteActions().forEach(function (a) {
+        var s = q ? fuzzy(q, a[0]) : 0;
+        if (s >= 0) put('Actions', BOLT_ICON, a[0], 'Action', a[1], s);
+      });
+      if (q) put('Search', 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-3.5-3.5', 'Search for “' + q + '”', 'All results', function () { goHash('#/search' + qs({ q: q })); }, 0);
+      var rows = [];
+      PALETTE_GROUPS.forEach(function (g) {
+        var items = groups[g];
+        if (!items) return;
+        if (q && g !== 'Threads') items.sort(function (a, b) { return b.s - a.s; });
+        rows.push({ group: g });
+        items.slice(0, PALETTE_GROUP_MAX).forEach(function (it) { rows.push({ item: it }); });
+      });
+      // keep the nodes when nothing changed, so a late response does not replace an option under the pointer
+      var sig = JSON.stringify(rows.map(function (r) { return r.group || [r.item.label, r.item.sub]; }));
+      flat = rows.filter(function (r) { return r.item; }).map(function (r) { return r.item; });
+      if (sig !== shown) {
+        shown = sig;
+        clear(list);
+        var idx = 0;
+        rows.forEach(function (r) {
+          if (r.group) { list.appendChild(el('div', { class: 'grp-l', role: 'presentation', text: r.group })); return; }
+          var it = r.item, at = idx++;
+          list.appendChild(el('div', { class: 'it', role: 'option', id: 'pal-opt-' + at, 'aria-selected': 'false',
+            onmousemove: function () { if (sel !== at) { sel = at; mark(); } }, onclick: function () { pick(flat[at]); } },
+            el('span', { class: 'pi' }, svgIcon(it.icon)), el('span', { class: 'lb', text: it.label }), el('small', { text: it.sub })));
+        });
+        if (!flat.length) list.appendChild(el('div', { class: 'none', text: 'No results' }));
+      }
+      if (resetSel) sel = 0;
+      sel = Math.min(sel, Math.max(0, flat.length - 1));
+      mark();
+    }
+    function fetchThreads() {
+      var q = input.value.trim(), mine = ++seq;
+      var req = q ? api('GET', '/api/search' + qs({ q: q, limit: PALETTE_GROUP_MAX })).then(function (r) { return r.threads; })
+        : api('GET', '/api/threads' + qs({ sort: 'hot', state: 'active', limit: 4 })).then(function (r) { return r.threads; });
+      req.then(function (found) { if (mine === seq && palette) { threads = found; build(false); } }, function () { /* the other groups still work */ });
+    }
+    input.addEventListener('input', function () {
+      seq++; threads = []; build(true);
+      clearTimeout(palette.timer);
+      palette.timer = setTimeout(fetchThreads, PALETTE_DEBOUNCE_MS);
+    });
+    scrim.addEventListener('mousedown', function (ev) { if (ev.target === scrim) closePalette(false); });
+    scrim.addEventListener('keydown', function (ev) {
+      if (ev.key === 'ArrowDown') { ev.preventDefault(); if (flat.length) { sel = (sel + 1) % flat.length; mark(); } }
+      else if (ev.key === 'ArrowUp') { ev.preventDefault(); if (flat.length) { sel = (sel + flat.length - 1) % flat.length; mark(); } }
+      else if (ev.key === 'Enter') { ev.preventDefault(); if (flat[sel]) pick(flat[sel]); }
+      else if (ev.key === 'Escape') { ev.stopPropagation(); closePalette(false); }
+      else if (ev.key === 'Tab') ev.preventDefault();
+    });
+    document.body.appendChild(scrim);
+    palette = { node: scrim, prev: prev, timer: null };
+    build(true);
+    input.focus();
+    api('GET', '/api/areas').then(function (r) { areas = r.areas; if (palette && palette.node === scrim) build(false); }, function () { /* areas are optional here */ });
+    fetchThreads();
+  }
+  document.getElementById('searchbtn').addEventListener('click', openPalette);
+  document.addEventListener('keydown', function (ev) {
+    if ((ev.metaKey || ev.ctrlKey) && !ev.altKey && ev.key.toLowerCase() === 'k') { ev.preventDefault(); openPalette(); }
   });
 
   // ---------- auth screens ----------
@@ -650,14 +782,6 @@
     run();
   }
   window.addEventListener('hashchange', route);
-  document.getElementById('searchform').addEventListener('submit', function (ev) {
-    ev.preventDefault();
-    var v = document.getElementById('searchbox').value.trim();
-    if (!v) return;
-    var target = '#/search?q=' + encodeURIComponent(v);
-    if (location.hash === target) route(); else location.hash = target;
-  });
-
   // ---------- home: areas ----------
   function areaForm(area, done) {
     var name = el('input', { type: 'text', required: true, maxlength: 80, value: area ? area.name : '' });

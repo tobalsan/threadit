@@ -981,3 +981,76 @@ def test_inspector_toggle_sections_and_outside_click(server, browser):
         expect(toggle).to_be_hidden()
     finally:
         ctx.close()
+
+
+def test_command_palette_open_filter_enter_and_actions(server, browser):
+    human, _ = seed_users(server)
+    area = call(server, "POST", "/api/areas", human, {"name": "Palette Lab", "description": "d"})
+    make_thread(server, human, area["id"], "Zebra crossing plan")
+    make_thread(server, human, area["id"], "Other topic")
+    ctx, page = open_page(browser, server, human)
+    try:
+        box = page.get_by_role("combobox", name="Search threads, areas, screens and actions")
+        expect(box).to_have_count(0)
+        page.keyboard.press("ControlOrMeta+k")
+        expect(box).to_be_focused()
+        expect(page.get_by_role("dialog", name="Command palette")).to_be_visible()
+        # empty query: hot threads, screens and actions
+        expect(page.get_by_role("option", name="Other topic")).to_be_visible()
+        expect(page.get_by_role("option", name="Toggle inspector")).to_have_count(0)  # not on a thread page
+        page.keyboard.press("Escape")
+        expect(box).to_have_count(0)
+
+        # sidebar field opens it too; filter, arrows, Enter opens the thread
+        page.get_by_role("button", name="Search", exact=True).click()
+        box.fill("zebra")
+        thread_opt = page.get_by_role("option", name=re.compile("^Zebra crossing plan"))
+        expect(thread_opt).to_be_visible()
+        expect(page.get_by_role("option", name="Other topic")).to_have_count(0)
+        expect(thread_opt).to_have_attribute("aria-selected", "true")
+        expect(box).to_have_attribute("aria-activedescendant", thread_opt.get_attribute("id"))
+        box.press("Enter")
+        expect(page).to_have_url(re.compile(r"#/thread/1$"))
+        expect(page.locator("h1.ttitle")).to_have_text("Zebra crossing plan")
+        expect(box).to_have_count(0)
+
+        # areas and screens group, arrows move, theme action
+        page.keyboard.press("ControlOrMeta+k")
+        box.fill("palette")
+        area_opt = page.get_by_role("option", name=re.compile("^Palette Lab"))
+        expect(area_opt).to_be_visible()
+        area_opt.hover()
+        expect(area_opt).to_have_attribute("aria-selected", "true")
+        box.press("Enter")
+        expect(page).to_have_url(re.compile(r"#/area/palette-lab$"))
+        page.keyboard.press("ControlOrMeta+k")
+        box.fill("users")
+        box.press("ArrowDown")
+        expect(page.get_by_role("option").nth(1)).to_have_attribute("aria-selected", "true")
+        box.press("ArrowUp")
+        box.press("Enter")
+        expect(page).to_have_url(re.compile(r"#/users$"))
+
+        page.keyboard.press("ControlOrMeta+k")
+        box.fill("dark")
+        page.get_by_role("option", name="Switch to dark mode").click()
+        expect(page.locator("html")).to_have_attribute("data-theme", "dark")
+        page.keyboard.press("ControlOrMeta+k")
+        box.fill("light")
+        page.get_by_role("option", name="Switch to light mode").click()
+        expect(page.locator("html")).to_have_attribute("data-theme", "light")
+
+        # on a thread page: toggle inspector action; outside click closes the palette
+        page.goto(f"{server}/#/thread/1")
+        expect(page.locator("h1.ttitle")).to_have_text("Zebra crossing plan")
+        page.keyboard.press("ControlOrMeta+k")
+        box.fill("inspector")
+        box.press("Enter")
+        expect(page.locator("#insp")).to_be_visible()
+        page.keyboard.press("ControlOrMeta+k")
+        expect(box).to_be_visible()
+        page.mouse.click(5, 5)
+        expect(box).to_have_count(0)
+        expect(page.locator(".scrim")).to_have_count(0)
+    finally:
+        ctx.close()

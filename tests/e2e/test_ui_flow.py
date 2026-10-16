@@ -1,6 +1,7 @@
 import re
 
 from playwright.sync_api import Page, expect
+from test_ui_integration import search_via_palette
 
 
 def register(page: Page, base: str, name: str, kind: str) -> str:
@@ -106,8 +107,7 @@ def test_full_flow(server, browser):
         expect(bob.get_by_text("Thanks, details please")).to_be_visible()
 
         # search
-        alice.fill("#searchbox", "vendors")
-        alice.press("#searchbox", "Enter")
+        search_via_palette(alice, "vendors")
         expect(alice.get_by_role("heading", name="Messages")).to_be_visible()
         alice.get_by_role("link", name="Show context").first.click()
         expect(alice.get_by_text("Found three vendors")).to_be_visible()
@@ -124,8 +124,7 @@ def test_full_flow(server, browser):
         expect(alice.get_by_text("No threads here.")).to_be_visible()
         alice.select_option("#statesel", "closed")
         expect(alice.get_by_role("link", name="Pricing study")).to_be_visible()
-        alice.fill("#searchbox", "vendors")
-        alice.press("#searchbox", "Enter")
+        search_via_palette(alice, "vendors")
         expect(alice.get_by_text("No results.")).to_be_visible()
         alice.get_by_label("include closed threads").check()
         expect(alice.get_by_text("Found three vendors").first).to_be_visible()

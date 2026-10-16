@@ -55,11 +55,9 @@ kbd{font:600 11px var(--font);padding:1px 6px;border-radius:5px;background:var(-
 .sidebar{width:230px;flex:none;border-radius:26px;padding:12px;display:flex;flex-direction:column;gap:4px;overflow:auto}
 .brand{display:flex;align-items:center;gap:9px;padding:8px 10px 10px;font-weight:700;font-size:16px;letter-spacing:-.01em;color:var(--text);text-decoration:none;border-radius:14px}
 .brand i{width:24px;height:24px;border-radius:8px;display:block;background:linear-gradient(145deg,#ff9f0a,#ff375f 60%,#bf5af2);box-shadow:inset 0 1px 0 rgba(255,255,255,.6)}
-.search{display:flex;align-items:center;gap:8px;border-radius:999px;padding:5px 10px 5px 12px;background:var(--card2);box-shadow:inset 0 0 0 .5px var(--sep);margin-bottom:8px;color:var(--text2)}
-.search:focus-within{outline:2.5px solid var(--accent)}
-.search input{all:unset;box-sizing:border-box;flex:1;min-width:0;font-size:14px;color:var(--text)}
-.search input::placeholder{color:var(--text2)}
-.search input::-webkit-search-cancel-button{display:none}
+.search{display:flex;align-items:center;gap:8px;width:100%;border-radius:999px;padding:5px 10px 5px 12px;background:var(--card2);box-shadow:inset 0 0 0 .5px var(--sep);margin-bottom:8px;color:var(--text2);font-size:14px;font-weight:400;text-align:left}
+.search:hover{background:var(--hover)}
+.search .tx{flex:1}
 .nav{display:flex;flex-direction:column;gap:1px}
 .nav a{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:14px;color:var(--text);text-decoration:none;font-weight:550;transition:background .15s var(--ease),transform .15s var(--ease)}
 .nav a:hover{background:var(--hover)}
@@ -327,6 +325,28 @@ main:has(.with-side){max-width:1180px}
 .insp .attnlist a:hover{text-decoration:underline}
 .insp::-webkit-scrollbar{width:0}
 
+/* command palette: the glass is on the palette box, the scrim stays plain */
+.scrim{position:fixed;inset:0;z-index:80;background:rgba(20,20,30,.22);display:flex;justify-content:center;align-items:flex-start;padding-top:13vh;animation:fade .15s ease-out}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.palette{width:min(580px,92vw);max-height:76vh;align-self:flex-start;border-radius:20px;overflow:hidden;background:var(--glass-strong);animation:popin .2s cubic-bezier(.3,1.3,.5,1);transform-origin:top center;display:flex;flex-direction:column}
+.pin-row{display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:.5px solid var(--sep);color:var(--text2)}
+.pin-row input{all:unset;box-sizing:border-box;flex:1;min-width:0;height:50px;font-size:18px;color:var(--text)}
+.pin-row input::placeholder{color:var(--text2)}
+.pin-row input:focus-visible{outline:0}
+.pin-row:focus-within{box-shadow:inset 0 -2.5px 0 var(--accent)}
+.pin-row>svg{width:18px;height:18px;flex:none}
+.palette .res{max-height:360px;overflow:auto;padding:6px}
+.palette .grp-l{font-size:11px;font-weight:750;letter-spacing:.06em;text-transform:uppercase;color:var(--text2);padding:8px 10px 3px}
+.palette .it{display:flex;align-items:center;gap:10px;padding:6px 10px;border-radius:10px;cursor:pointer}
+.palette .it .pi{width:22px;height:22px;display:grid;place-items:center;flex:none;color:var(--text2)}
+.palette .it .pi svg{width:16px;height:16px}
+.palette .it .lb{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.palette .it small{color:var(--text2);font-size:12px;white-space:nowrap}
+.palette .it[aria-selected=true]{background:var(--accent);color:#fff}
+.palette .it[aria-selected=true] .pi,.palette .it[aria-selected=true] small{color:rgba(255,255,255,.9)}
+.palette .none{padding:22px;text-align:center;color:var(--text2)}
+.palette .pfoot{display:flex;gap:14px;padding:7px 14px;border-top:.5px solid var(--sep);font-size:12px;color:var(--text2)}
+
 /* signed out: the sidebar and the toolbar stay hidden */
 .anon .sidebar,.anon .toolbar{display:none}
 .anon .scroll{padding-top:8vh}
@@ -334,9 +354,8 @@ main:has(.with-side){max-width:1180px}
 
 @media (max-width:1000px){
   .sidebar{width:62px;padding:10px 7px;border-radius:24px}
-  .brand span,.nav .t,.search input,.search kbd,.me span,.label,.seg .tx,.sidebar .lo .tx{display:none}
+  .brand span,.nav .t,.search .tx,.search kbd,.me span,.label,.seg .tx,.sidebar .lo .tx{display:none}
   .search{justify-content:center;padding:8px 0}
-  .search:focus-within{outline-offset:1px}
   .nav a{justify-content:center;padding:8px 0;position:relative}
   .navcount{position:absolute;top:-2px;right:-2px;margin:0;font-size:10px;min-width:16px;line-height:16px;padding:0 4px}
   .brand{justify-content:center;padding:6px 0 10px}

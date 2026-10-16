@@ -1,4 +1,5 @@
 import json
+import re
 import urllib.request
 
 from playwright.sync_api import Page, expect
@@ -28,6 +29,12 @@ def login(page: Page, base: str, token: str) -> None:
     page.fill("#login-token", token)
     page.get_by_role("button", name="Log in").click()
     expect(page.get_by_role("heading", name="Home")).to_be_visible()
+
+
+def search_via_palette(page: Page, query: str) -> None:
+    page.get_by_role("button", name="Search", exact=True).click()
+    page.get_by_role("combobox", name="Search threads, areas, screens and actions").fill(query)
+    page.get_by_role("option", name=re.compile("^Search for")).click()
 
 
 def make_thread(base, token, area_id, title, body="op"):
@@ -112,12 +119,10 @@ def test_search_pagination_same_query_retry_and_context_target(server, browser):
     try:
         login(page, server, human)
         page.route("**/api/search*", lambda route: route.abort())
-        page.fill("#searchbox", "needle")
-        page.press("#searchbox", "Enter")
+        search_via_palette(page, "needle")
         expect(page.get_by_role("alert")).to_contain_text("Network error")
         page.unroute("**/api/search*")
-        page.fill("#searchbox", "needle")
-        page.press("#searchbox", "Enter")  # same hash: must reroute, not stay stuck
+        search_via_palette(page, "needle")  # same hash: must reroute, not stay stuck
         results = page.locator("a", has_text="Show context")
         expect(results).to_have_count(50)
         page.get_by_role("button", name="Load more messages").click()
