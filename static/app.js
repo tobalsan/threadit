@@ -559,8 +559,15 @@
   // ---------- area ----------
   function threadRow(t) {
     var link = el('a', { class: 't', href: '#/thread/' + t.id }, renderInline(t.title, true));
+    var score = el('span', { text: String(t.importance) });
+    // quick +/-1 on the OP (importance = OP score); closed threads are read-only
+    function vote(d) {
+      return t.closed ? null : el('button', { type: 'button', class: 'qv', 'aria-label': (d > 0 ? 'Upvote ' : 'Downvote ') + t.title, title: d > 0 ? '+1' : '-1', text: d > 0 ? '▲' : '▼', onclick: function (ev) {
+        act(ev.currentTarget, function () { return api('POST', '/api/messages/' + t.op_message_id + '/votes', { delta: d }).then(function (r) { t.importance = r.score; score.textContent = String(r.score); }); });
+      } });
+    }
     return el('div', { class: 'card thread' },
-      el('div', { class: 'imp', title: 'Importance (OP score)' }, String(t.importance), el('small', { text: 'score' })),
+      el('div', { class: 'imp', title: 'Importance (OP score)' }, vote(1), score, el('small', { text: 'score' }), vote(-1)),
       el('div', { class: 'grow' },
         el('div', null, t.pinned ? el('span', { class: 'badge pin', text: 'pinned' }) : null, ' ',
           t.closed ? el('span', { class: 'badge closed', text: 'closed: ' + t.closed.reason }) : null, ' ',
@@ -577,7 +584,8 @@
       return api('GET', '/api/threads' + qs({ area_id: area.id, state: state, sort: sort, order: order, limit: PAGE })).then(function (list) { return [area, list]; });
     }).then(function (rs) {
       var area = rs[0], list = rs[1];
-      var root = el('div');
+      var page = el('div', { class: 'with-side' });
+      var root = el('div', { class: 'main-col' });
       var slot = el('div');
       root.appendChild(el('div', { class: 'row' }, el('h1', { class: 'grow', text: area.name }),
         el('button', { type: 'button', text: 'Edit area', onclick: function () {
@@ -591,7 +599,8 @@
           if (slot.firstChild && slot.dataset.k === 't') { clear(slot); return; }
           clear(slot); slot.dataset.k = 't'; slot.appendChild(threadForm(area, function () { clear(slot); }));
         } })));
-      root.appendChild(el('div', { class: 'card' }, el('div', { class: 'mut', text: 'Area description / instructions' }),
+      page.appendChild(root);
+      page.appendChild(el('aside', { class: 'side card', 'aria-label': 'Area description' }, el('h2', { text: 'About this area' }),
         area.description ? renderMarkdown(area.description) : el('div', { class: 'body', text: '(none)' })));
       root.appendChild(slot);
       function go(s, o, d) { location.hash = '#/area/' + id + qs({ state: s, sort: o, order: d === 'asc' ? 'asc' : '' }); }
@@ -622,7 +631,7 @@
         } }));
       }
       showPage(list);
-      return root;
+      return page;
     });
   }
   function threadForm(area, close) {

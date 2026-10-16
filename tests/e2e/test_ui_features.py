@@ -550,3 +550,34 @@ def test_cmd_enter_submits_message_and_edit(server, browser):
         assert [m["body"] for m in msgs[1:]] == ["edited with keys"]
     finally:
         ctx.close()
+
+
+def test_area_sidebar_and_quick_vote_from_list(server, browser):
+    human, _ = seed_users(server)
+    area = call(server, "POST", "/api/areas", human, {"name": "Side", "description": "**Rules** here"})
+    thread = make_thread(server, human, area["id"], "vote me")
+    closed = make_thread(server, human, area["id"], "done one")
+    call(server, "POST", f"/api/threads/{closed['id']}/close", human, {"reason": "completed"})
+    ctx = browser.new_context(viewport={"width": 1280, "height": 800})
+    page = ctx.new_page()
+    login(page, server, human)
+    try:
+        page.goto(f"{server}/#/area/side?state=all")
+        side = page.get_by_role("complementary", name="Area description")
+        expect(side.locator("strong")).to_have_text("Rules")
+        row = page.locator(".card.thread").filter(has_text="vote me")
+        assert side.bounding_box()["x"] > row.bounding_box()["x"] + row.bounding_box()["width"] - 1
+
+        page.get_by_role("button", name="Upvote vote me").click()
+        expect(row.locator(".imp")).to_contain_text("1")
+        page.get_by_role("button", name="Upvote vote me").click()
+        page.get_by_role("button", name="Downvote vote me").click()
+        expect(row.locator(".imp span")).to_have_text("1")
+        got = call(server, "GET", f"/api/threads/{thread['id']}", human)["thread"]
+        assert got["importance"] == 1
+        expect(page.get_by_role("button", name="Upvote done one")).to_have_count(0)
+
+        page.set_viewport_size({"width": 600, "height": 800})
+        assert side.bounding_box()["y"] > row.bounding_box()["y"]  # stacked below the list
+    finally:
+        ctx.close()

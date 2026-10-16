@@ -82,3 +82,10 @@ details.menu .pop{position:absolute;z-index:4;background:#fff;border:1px solid v
 .attach{margin-bottom:8px}
 .attach .field{margin:6px 0 0}
 form.dragover{outline:2px dashed var(--acc);outline-offset:2px;background:#eef3ff}
+main:has(.with-side){max-width:1240px}
+.with-side{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px;align-items:start}
+.with-side .side{position:sticky;top:12px;max-height:calc(100vh - 24px);overflow:auto}
+.with-side .side h2{margin-top:0}
+@media(max-width:860px){.with-side{grid-template-columns:1fr}.with-side .side{position:static;max-height:none}}
+.thread .imp .qv{display:block;margin:0 auto;padding:0 6px;border:0;background:none;color:var(--mut);font-size:12px;line-height:1.2}
+.thread .imp .qv:hover{color:var(--acc)}
