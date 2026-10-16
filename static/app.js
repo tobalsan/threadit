@@ -622,11 +622,14 @@
       root.appendChild(el('div', { class: 'row' }, el('label', { for: 'sortsel', text: 'Sort' }), sortSel, dated ? orderSel : null, el('label', { for: 'statesel', text: 'Show' }), stateSel));
       sortSel.id = 'sortsel'; stateSel.id = 'statesel';
       // importance sort: re-order loaded rows 2s after the last quick vote (debounced), mirroring server order
+      // (score, then last activity, then created, newest first)
       var resortTimer = null;
+      function cmp(p, q) { return p < q ? -1 : p > q ? 1 : 0; }
       function resort() {
         [pinnedRows, rows].forEach(function (box) {
           Array.prototype.slice.call(box.children).sort(function (x, y) {
-            return (y.thread.importance - x.thread.importance) || (y.thread.id - x.thread.id);
+            var a = x.thread, b = y.thread;
+            return (b.importance - a.importance) || cmp(b.last_activity_at, a.last_activity_at) || cmp(b.created_at, a.created_at) || (b.id - a.id);
           }).forEach(function (n) { box.appendChild(n); });
         });
       }

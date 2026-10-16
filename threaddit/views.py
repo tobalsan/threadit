@@ -40,7 +40,7 @@ LEFT JOIN users cb ON cb.id = t.closed_by
 THREAD_ORDERS = {
     "created": "t.created_at {d}, t.id {d}",
     "activity": "t.last_activity_at {d}, t.id {d}",
-    "importance": "op.score {d}, t.id {d}",
+    "importance": "op.score {d}, t.last_activity_at {d}, t.created_at {d}, t.id {d}",
 }
 
 

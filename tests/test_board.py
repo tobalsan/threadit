@@ -346,3 +346,19 @@ def test_created_sort_uses_created_at_not_id(board, admin, area):
 
     assert ids("desc") == [old, new]
     assert ids("asc") == [new, old]
+
+
+def test_importance_ties_break_by_activity_then_created(board, admin, area):
+    a = admin.make_thread(area["id"], "a")["thread"]["id"]
+    b = admin.make_thread(area["id"], "b")["thread"]["id"]
+    c = admin.make_thread(area["id"], "c")["thread"]["id"]
+    conn = sqlite3.connect(board.path)
+    conn.execute(  # a: most recent activity; b and c tie on activity, b created later
+        "UPDATE threads SET last_activity_at = CASE id WHEN ? THEN '2030-01-01' ELSE '2020-01-01' END,"
+        " created_at = CASE id WHEN ? THEN '2019-06-01' ELSE '2019-01-01' END",
+        (a, b),
+    )
+    conn.commit()
+    conn.close()
+    listing = admin.ok("GET", "/api/threads", params={"sort": "importance"})
+    assert [t["id"] for t in listing["threads"]] == [a, b, c]

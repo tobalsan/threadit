@@ -57,7 +57,8 @@ Thread summary:
   same sort) and excluded from `threads`; `offset`/`limit` page only `threads`, `has_more` says
   whether a next page exists (clients render `pinned` from the first page only). Default
   `state=active`, `sort=importance` (OP score; `created`/`activity` are explicit choices), `order=desc`
-  (`asc` = oldest/least first; ties broken by id in the same direction).
+  (`asc` = oldest/least first). Ties: `importance` -> last activity, then created, then id;
+  `activity`/`created` -> id; all in the same direction.
   Closed threads appear only with `state=closed|all`.
 - `POST /api/threads` `{area_id, title (1-200), body (1-20000), attachment_ids?}` -> 201 thread detail.
   Body becomes the OP message; `attachment_ids` (max 10) are linked to it. This is also the migration/creation endpoint for agents.
