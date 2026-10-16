@@ -71,8 +71,8 @@ def test_full_flow(server, browser):
         expect(alice.locator(".msgbody .body").first).to_contain_text("<img src=x")
 
         # vote on OP -> importance
-        alice.get_by_role("button", name="Vote +10").first.click()
-        expect(alice.get_by_text("importance (OP score): 10")).to_be_visible()
+        alice.get_by_role("button", name="Vote +5").first.click()
+        expect(alice.get_by_text("importance (OP score): 5")).to_be_visible()
 
         # bob sees attention, reacts processing, replies nested
         bob.get_by_role("link", name="Attention").click()

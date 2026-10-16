@@ -273,13 +273,11 @@ def test_symmetric_vote_buttons(server, browser):
         page.goto(f"{server}/#/thread/{thread['id']}")
         actions = page.locator(".msgbody .actions").first
         labels = actions.locator("button").all_inner_texts()
-        assert labels == ["-100", "-10", "-5", "-1", "+1", "+5", "+10", "+100"]
-        page.get_by_role("button", name="Vote -10", exact=True).first.click()
-        expect(page.get_by_label("score -10").first).to_be_visible()
-        page.get_by_role("button", name="Vote -100", exact=True).first.click()
-        expect(page.get_by_text("importance (OP score): -110")).to_be_visible()
+        assert labels == ["-5", "-1", "+1", "+5"]
         page.get_by_role("button", name="Vote -5", exact=True).first.click()
-        expect(page.get_by_label("score -115").first).to_be_visible()
+        expect(page.get_by_label("score -5").first).to_be_visible()
+        page.get_by_role("button", name="Vote -1", exact=True).first.click()
+        expect(page.get_by_text("importance (OP score): -6")).to_be_visible()
     finally:
         ctx.close()
 

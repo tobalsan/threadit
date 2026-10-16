@@ -8,7 +8,7 @@
   var MAX_ATTACHMENTS = 10;
   var MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
   var INLINE_IMAGES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
-  var DELTAS = [-100, -10, -5, -1, 1, 5, 10, 100];
+  var DELTAS = [-5, -1, 1, 5];
   var QUICK = ['👀', '✅', '👍', '❤️', '🎉'];
   var main = document.getElementById('main');
   var me = null;
