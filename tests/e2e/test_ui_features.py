@@ -1161,3 +1161,40 @@ def test_new_thread_sheet_keeps_typed_text_and_files_when_choosing_area(server, 
         expect(page.get_by_role("button", name="Open image pic.png")).to_be_visible()
     finally:
         ctx.close()
+
+
+CONTRAST_JS = """([fgSel, bgSel]) => {
+  const parse = c => c.match(/[\\d.]+/g).map(Number);
+  const f = v => { v /= 255; return v <= .03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); };
+  const lum = c => .2126 * f(c[0]) + .7152 * f(c[1]) + .0722 * f(c[2]);
+  const fg = parse(getComputedStyle(document.querySelector(fgSel)).color);
+  const bg = parse(getComputedStyle(document.querySelector(bgSel)).backgroundColor);
+  const [hi, lo] = [lum(fg), lum(bg)].sort((a, b) => b - a);
+  return (hi + .05) / (lo + .05);
+}"""
+
+
+def test_filled_controls_and_faded_scores_meet_contrast(server, browser):
+    human, _ = seed_users(server)
+    area = call(server, "POST", "/api/areas", human, {"name": "Contrast", "description": "d"})
+    cool = make_thread(server, human, area["id"], "cool thread")
+    cold = make_thread(server, human, area["id"], "cold thread")
+    call(server, "POST", f"/api/messages/{cool['op_message_id']}/votes", human, {"delta": -1})
+    call(server, "POST", f"/api/messages/{cold['op_message_id']}/votes", human, {"delta": -5})
+    ctx, page = open_page(browser, server, human)
+    try:
+        for theme in ("light", "dark"):
+            page.goto(f"{server}/#/area/contrast")
+            page.evaluate("t => document.documentElement.setAttribute('data-theme', t)", theme)
+            for cls in ("sc-cool", "sc-cold"):
+                score = f".imp.{cls} output"
+                expect(page.locator(score)).to_have_count(1)
+                assert page.evaluate("s => getComputedStyle(document.querySelector(s)).opacity", score) == "1"
+                ratio = page.evaluate(CONTRAST_JS, [score, ".li"])
+                assert ratio >= 4.5, (theme, cls, ratio)
+            page.get_by_role("button", name="New thread").click()
+            ratio = page.evaluate(CONTRAST_JS, ["button.primary", "button.primary"])
+            assert ratio >= 4.5, (theme, "primary", ratio)
+            page.keyboard.press("Escape")
+    finally:
+        ctx.close()
