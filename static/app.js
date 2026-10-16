@@ -475,7 +475,7 @@
     api('GET', '/api/attention' + qs({ status: 'unacknowledged', limit: PAGE })).then(function (r) {
       attentionCount = r.items.length + (r.has_more ? 1 : 0);
       attentionHasMore = r.has_more;
-      if (me) paintNav();
+      if (me) paintAttentionBadge();
     }).catch(function () { /* the badge is optional */ });
   }
   var attentionHasMore = false;
@@ -486,10 +486,23 @@
     [['#/', 'Home'], ['#/areas', 'Areas'], ['#/attention', 'Attention'], ['#/activity', 'Activity'], ['#/users', 'Users']]
       .concat(me.is_superadmin ? [['#/admin', 'Admin']] : []).forEach(function (l) {
         var cur = l[0] === '#/' ? (h === '#/' || h.indexOf('#/?') === 0) : l[0] === '#/areas' ? (h.indexOf('#/area') === 0 || h.indexOf('#/thread') === 0) : h.indexOf(l[0]) === 0;
-        var count = l[1] === 'Attention' && attentionCount > 0 ? (attentionHasMore ? (attentionCount - 1) + '+' : String(attentionCount)) : null;
+        var count = l[1] === 'Attention' ? attentionBadgeText() : null;
         nav.appendChild(el('a', { href: l[0], 'aria-current': cur ? 'page' : null, 'aria-label': l[1] + (count ? ', ' + count + ' need your attention' : '') }, navIcon(l[1]), el('span', { class: 't', text: l[1] }),
           count ? el('span', { class: 'navcount', 'aria-hidden': 'true', text: count }) : null));
       });
+  }
+  function attentionBadgeText() {
+    return attentionCount > 0 ? (attentionHasMore ? (attentionCount - 1) + '+' : String(attentionCount)) : null;
+  }
+  // update only the badge: rebuilding the links would drop keyboard focus
+  function paintAttentionBadge() {
+    var link = document.querySelector('#nav a[href="#/attention"]');
+    if (!link) return;
+    var count = attentionBadgeText();
+    var badge = link.querySelector('.navcount');
+    if (badge) badge.remove();
+    if (count) link.appendChild(el('span', { class: 'navcount', 'aria-hidden': 'true', text: count }));
+    link.setAttribute('aria-label', 'Attention' + (count ? ', ' + count + ' need your attention' : ''));
   }
   function renderChrome() {
     var who = document.getElementById('whoami');
@@ -597,7 +610,12 @@
         if (i === sel) { input.setAttribute('aria-activedescendant', n.id); n.scrollIntoView({ block: 'nearest' }); }
       });
     }
-    function pick(it) { closePalette(true); it.run(); }
+    function pick(it) {
+      closePalette(true);
+      it.run();
+      // an action that neither navigates nor opens a dialog leaves no focus: give it back
+      if (prev && document.contains(prev) && (!document.activeElement || document.activeElement === document.body)) prev.focus();
+    }
     function build(resetSel) {
       var q = input.value.trim(), groups = {};
       function put(g, icon, label, sub, run, score) { (groups[g] = groups[g] || []).push({ icon: icon, label: label, sub: sub, run: run, s: score }); }
@@ -667,7 +685,7 @@
       else if (ev.key === 'Tab') ev.preventDefault();
     });
     document.body.appendChild(scrim);
-    palette = { node: scrim, prev: prev, timer: null };
+    palette = { node: scrim, prev: prev, timer: null, hash: location.hash };
     build(true);
     input.focus();
     api('GET', '/api/areas').then(function (r) { areas = r.areas; if (palette && palette.node === scrim) build(false); }, function () { /* areas are optional here */ });
@@ -823,7 +841,7 @@
     var r = newBtn.getBoundingClientRect();
     form.style.top = (r.bottom + 8) + 'px';
     form.style.right = Math.max(8, window.innerWidth - r.right) + 'px';
-    sheet = { node: form, prev: prev };
+    sheet = { node: form, prev: prev, hash: location.hash };
     newBtn.setAttribute('aria-expanded', 'true');
     document.addEventListener('mousedown', sheetOutside, true);
     if (openList) openDrop(); else title.focus();
@@ -894,6 +912,10 @@
   // ---------- router ----------
   function route() {
     if (!me) return;
+    // close overlays opened before this hash (Back); a late event for an older hash must not close a new one
+    if (palette && palette.hash !== location.hash) closePalette(true);
+    if (sheet && sheet.hash !== location.hash) closeSheet(false);
+    closePop(false);
     renderChrome();
     var id = ++navId;
     releaseBlobs();
@@ -1318,7 +1340,7 @@
           openPop(btn, el('div', { class: 'pop', role: 'menu' }, el('div', { class: 'cap', text: 'Close as…' }),
             ['completed', 'archived'].map(function (r) {
               return el('button', { type: 'button', role: 'menuitem', text: r === 'completed' ? 'Close as completed' : 'Close as archived', onclick: function (e2) {
-                act(e2.currentTarget, function () { return api('POST', '/api/threads/' + t.id + '/close', { reason: r }).then(route); }); } });
+                act(e2.currentTarget, function () { return api('POST', '/api/threads/' + t.id + '/close', { reason: r }).then(function () { closePop(false); route(); }); }); } });
             })));
         } }));
       }

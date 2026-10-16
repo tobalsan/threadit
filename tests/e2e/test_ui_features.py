@@ -1198,3 +1198,70 @@ def test_filled_controls_and_faded_scores_meet_contrast(server, browser):
             page.keyboard.press("Escape")
     finally:
         ctx.close()
+
+
+def test_close_menu_action_removes_popover(server, browser):
+    human, _ = seed_users(server)
+    area = call(server, "POST", "/api/areas", human, {"name": "Closing", "description": "d"})
+    thread = make_thread(server, human, area["id"], "To close")
+    ctx, page = open_page(browser, server, human)
+    try:
+        page.goto(f"{server}/#/thread/{thread['id']}")
+        page.get_by_role("button", name="Close thread").click()
+        page.get_by_role("menuitem", name="Close as completed").click()
+        expect(page.get_by_role("button", name="Reopen thread")).to_be_visible()
+        expect(page.get_by_role("menu")).to_have_count(0)
+    finally:
+        ctx.close()
+
+
+def test_attention_badge_update_keeps_nav_focus(server, browser):
+    human, agent = seed_users(server)
+    area = call(server, "POST", "/api/areas", human, {"name": "Badge", "description": "d"})
+    thread = make_thread(server, human, area["id"], "Ping")
+    call(server, "POST", f"/api/threads/{thread['id']}/messages", agent, {"body": "hi @hanna", "parent_id": thread["op_message_id"]})
+    ctx, page = open_page(browser, server, human)
+    try:
+        def slow(route):
+            time.sleep(1.5)
+            route.continue_()
+
+        page.route("**/api/attention?*", slow)
+        page.goto(f"{server}/#/users")
+        expect(page.get_by_role("heading", name="Users")).to_be_visible()
+        link = page.locator("#nav a", has_text="Users")
+        link.focus()
+        page.evaluate("document.querySelector('#nav a[href=\"#/users\"]').dataset.keep = '1'")
+        expect(page.locator("#nav .navcount")).to_have_text("1")
+        expect(link).to_be_focused()
+        expect(link).to_have_attribute("data-keep", "1")
+    finally:
+        ctx.close()
+
+
+def test_back_closes_palette_and_action_returns_focus(server, browser):
+    human, _ = seed_users(server)
+    ctx, page = open_page(browser, server, human)
+    try:
+        palette = page.get_by_role("dialog", name="Command palette")
+        box = page.get_by_role("combobox", name="Search threads, areas, screens and actions")
+        page.goto(f"{server}/#/areas")
+        expect(page.get_by_role("heading", name="Areas")).to_be_visible()
+        page.goto(f"{server}/#/users")
+        page.keyboard.press("ControlOrMeta+k")
+        expect(palette).to_be_visible()
+        page.go_back()
+        expect(page.locator("#bartitle")).to_have_text("Areas")
+        expect(palette).to_have_count(0)
+
+        # a theme action neither navigates nor opens a dialog: focus goes back
+        sidebar_search = page.get_by_role("button", name="Search", exact=True)
+        sidebar_search.focus()
+        page.keyboard.press("ControlOrMeta+k")
+        box.fill("dark mode")
+        box.press("Enter")
+        expect(palette).to_have_count(0)
+        expect(page.locator("html")).to_have_attribute("data-theme", "dark")
+        expect(sidebar_search).to_be_focused()
+    finally:
+        ctx.close()
