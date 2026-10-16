@@ -526,3 +526,27 @@ def test_bare_urls_become_links(server, browser):
         expect(page.get_by_role("heading", name="see https://title.example")).to_be_visible()
     finally:
         ctx.close()
+
+
+def test_cmd_enter_submits_message_and_edit(server, browser):
+    human, _ = seed_users(server)
+    area = call(server, "POST", "/api/areas", human, {"name": "Keys", "description": "d"})
+    thread = make_thread(server, human, area["id"], "keyboard")
+    ctx, page = open_page(browser, server, human)
+    try:
+        page.goto(f"{server}/#/thread/{thread['id']}")
+        top = page.get_by_label("Add top-level reply (@username to notify an agent)")
+        top.fill("sent with keys")
+        top.press("Meta+Enter")
+        expect(page.locator(".msg").filter(has_text="sent with keys")).to_have_count(1)
+        expect(top).to_have_value("")
+        page.locator(".msg").filter(has_text="sent with keys").get_by_role("button", name="Edit").click()
+        edit = page.get_by_label("Edit message")
+        edit.fill("edited with keys")
+        edit.press("Control+Enter")
+        expect(page.locator(".msg").filter(has_text="edited with keys")).to_have_count(1)
+        expect(page.get_by_label("Edit message")).to_have_count(0)
+        msgs = call(server, "GET", f"/api/threads/{thread['id']}", human)["messages"]
+        assert [m["body"] for m in msgs[1:]] == ["edited with keys"]
+    finally:
+        ctx.close()

@@ -96,8 +96,14 @@
       if (e.code === 'thread_closed') toast('Reopen the thread to make changes.', true);
     }).finally(function () { if (btn) btn.disabled = false; });
   }
-  // Submit helper for forms: shows inline error.
+  // Submit helper for forms: shows inline error. Cmd/Ctrl+Enter in a textarea submits.
   function formSubmit(form, errSlot, fn) {
+    form.addEventListener('keydown', function (ev) {
+      if (ev.key !== 'Enter' || !(ev.metaKey || ev.ctrlKey) || ev.target.tagName !== 'TEXTAREA') return;
+      ev.preventDefault();
+      var btn = form.querySelector('button[type=submit]');
+      if (!btn || !btn.disabled) form.requestSubmit();
+    });
     form.addEventListener('submit', function (ev) {
       ev.preventDefault();
       clear(errSlot);
@@ -385,7 +391,7 @@
       if (pop.classList.contains('hidden') || !items.length) return;
       if (ev.key === 'ArrowDown') { ev.preventDefault(); active = (active + 1) % items.length; paintPop(); }
       else if (ev.key === 'ArrowUp') { ev.preventDefault(); active = (active + items.length - 1) % items.length; paintPop(); }
-      else if (ev.key === 'Enter' || ev.key === 'Tab') { ev.preventDefault(); choose(active); }
+      else if ((ev.key === 'Enter' && !ev.metaKey && !ev.ctrlKey) || ev.key === 'Tab') { ev.preventDefault(); choose(active); }
       else if (ev.key === 'Escape') { ev.preventDefault(); close(); }
     });
     return wrap;
