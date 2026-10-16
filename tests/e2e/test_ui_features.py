@@ -413,3 +413,42 @@ def test_file_picker_disabled_during_upload(server, browser):
         assert len(call(server, "GET", f"/api/threads?area_id={area['id']}", human)["threads"]) == 1
     finally:
         ctx.close()
+
+
+DROP_FILES = """(form, names) => {
+    const dt = new DataTransfer();
+    names.forEach((n) => dt.items.add(new File(['x'], n, { type: 'text/plain' })));
+    for (const type of ['dragenter', 'dragover', 'drop']) {
+        form.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: dt }));
+    }
+}"""
+
+
+def test_attach_toggle_and_drag_drop_multiple_files(server, browser):
+    human, _ = seed_users(server)
+    area = call(server, "POST", "/api/areas", human, {"name": "Drop", "description": "d"})
+    thread = make_thread(server, human, area["id"], "drop here")
+    ctx, page = open_page(browser, server, human)
+    try:
+        page.goto(f"{server}/#/thread/{thread['id']}")
+        form = page.locator("form.card").filter(has_text="Add top-level reply")
+        picker = form.get_by_label("Attach files (max 10, 10 MB each)")
+        toggle = form.get_by_role("button", name="Toggle attachments")
+        expect(picker).to_be_hidden()
+        toggle.click()
+        expect(picker).to_be_visible()
+        expect(toggle).to_have_attribute("aria-expanded", "true")
+        toggle.click()
+        expect(picker).to_be_hidden()
+
+        form.evaluate(DROP_FILES, ["one.txt", "two.txt"])
+        expect(form.get_by_text("one.txt (1 B)")).to_be_visible()
+        expect(form.get_by_text("two.txt (1 B)")).to_be_visible()
+        expect(form).not_to_have_class(re.compile("dragover"))
+        form.locator("textarea").fill("dropped files")
+        form.get_by_role("button", name="Post").click()
+        expect(page.get_by_role("link", name="one.txt")).to_be_visible()
+        msgs = call(server, "GET", f"/api/threads/{thread['id']}", human)["messages"]
+        assert sorted(a["filename"] for a in msgs[-1]["attachments"]) == ["one.txt", "two.txt"]
+    finally:
+        ctx.close()

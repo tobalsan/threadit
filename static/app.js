@@ -259,6 +259,7 @@
     return box;
   }
   // File input for thread/message forms: upload() sends not-yet-uploaded files and resolves to all ids.
+  // The input sits behind a 📎 toggle; dropTarget(form) accepts files dragged onto the form.
   var pickerSeq = 0;
   function filePicker() {
     var files = [];
@@ -266,6 +267,31 @@
     var list = el('ul', { class: 'filelist' });
     var input = el('input', { type: 'file', multiple: true, id: id });
     var uploading = false;
+    var panel = el('div', { class: 'field', hidden: true }, el('label', { for: id, text: 'Attach files (max 10, 10 MB each)' }), input);
+    var toggle = el('button', { type: 'button', class: 'small', title: 'Attach files (or drop them on the form)', 'aria-label': 'Toggle attachments', 'aria-expanded': 'false', text: '📎', onclick: function () {
+      panel.hidden = !panel.hidden; toggle.setAttribute('aria-expanded', String(!panel.hidden));
+    } });
+    function addFiles(fileList) {
+      Array.prototype.forEach.call(fileList, function (file) {
+        if (files.length >= MAX_ATTACHMENTS) { toast('At most ' + MAX_ATTACHMENTS + ' attachments.', true); return; }
+        if (file.size > MAX_ATTACHMENT_BYTES) { toast(file.name + ' is larger than 10 MB.', true); return; }
+        files.push({ file: file, id: null });
+      });
+      paintList();
+    }
+    function dropTarget(form) {
+      var depth = 0;
+      function hasFiles(ev) { return ev.dataTransfer && Array.prototype.indexOf.call(ev.dataTransfer.types, 'Files') >= 0; }
+      form.addEventListener('dragenter', function (ev) { if (!hasFiles(ev) || input.disabled) return; depth++; form.classList.add('dragover'); });
+      form.addEventListener('dragover', function (ev) { if (hasFiles(ev) && !input.disabled) ev.preventDefault(); });
+      form.addEventListener('dragleave', function (ev) { if (!hasFiles(ev)) return; if (--depth <= 0) { depth = 0; form.classList.remove('dragover'); } });
+      form.addEventListener('drop', function (ev) {
+        if (!hasFiles(ev)) return;
+        ev.preventDefault(); depth = 0; form.classList.remove('dragover');
+        if (!input.disabled) addFiles(ev.dataTransfer.files);
+      });
+      return form;
+    }
     function paintList() {
       clear(list);
       files.forEach(function (f, i) {
@@ -273,14 +299,7 @@
           el('button', { type: 'button', class: 'small', 'aria-label': 'Remove ' + f.file.name, text: 'Remove', disabled: uploading, onclick: function () { if (uploading) return; files.splice(i, 1); paintList(); } })));
       });
     }
-    input.addEventListener('change', function () {
-      Array.prototype.forEach.call(input.files, function (file) {
-        if (files.length >= MAX_ATTACHMENTS) { toast('At most ' + MAX_ATTACHMENTS + ' attachments.', true); return; }
-        if (file.size > MAX_ATTACHMENT_BYTES) { toast(file.name + ' is larger than 10 MB.', true); return; }
-        files.push({ file: file, id: null });
-      });
-      input.value = ''; paintList();
-    });
+    input.addEventListener('change', function () { addFiles(input.files); input.value = ''; });
     function upload() {
       var batch = files.slice();
       uploading = true; input.disabled = true; paintList();
@@ -298,7 +317,7 @@
         throw e;
       });
     }
-    return { node: el('div', { class: 'field' }, el('label', { for: id, text: 'Attach files (max 10, 10 MB each)' }), input, list), upload: upload };
+    return { node: el('div', { class: 'attach' }, toggle, panel, list), toggle: toggle, upload: upload, dropTarget: dropTarget };
   }
 
   // ---------- @mention autocomplete ----------
@@ -590,6 +609,7 @@
     var err = el('div');
     var f = el('form', { class: 'card' }, el('h2', { text: 'New thread in ' + area.name }), field('Title', title, 'th-title'),
       field('Opening post (use @username to notify an agent)', body, 'th-body', mentionable(body)), picker.node, err, el('button', { type: 'submit', class: 'primary', text: 'Create thread' }));
+    picker.dropTarget(f);
     formSubmit(f, err, function () {
       return picker.upload().then(function (ids) {
         return api('POST', '/api/threads', { area_id: area.id, title: title.value.trim(), body: body.value, attachment_ids: ids });
@@ -689,6 +709,7 @@
     var picker = filePicker();
     var err = el('div');
     var f = el('form', null, mentionable(ta), picker.node, err, el('button', { type: 'submit', class: 'primary small', text: 'Post reply' }));
+    picker.dropTarget(f);
     formSubmit(f, err, function () {
       return picker.upload().then(function (ids) {
         var body = { body: ta.value, attachment_ids: ids };
@@ -753,7 +774,8 @@
       var f = el('form', { class: 'card' }, field(t.closed ? 'Thread closed: reopen to reply' : 'Add top-level reply (@username to notify an agent)', ta, 'top-reply', mentionable(ta)), picker.node, errSlot,
         el('button', { type: 'submit', class: 'primary', disabled: !!t.closed, text: 'Post' }));
       if (t.closed) ta.disabled = true;
-      if (t.closed) picker.node.querySelector('input').disabled = true;
+      if (t.closed) { picker.node.querySelector('input').disabled = true; picker.toggle.disabled = true; }
+      picker.dropTarget(f);
       formSubmit(f, errSlot, function () {
         return picker.upload().then(function (ids) { return api('POST', '/api/threads/' + t.id + '/messages', { body: ta.value, attachment_ids: ids }); }).then(route);
       });

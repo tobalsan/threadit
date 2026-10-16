@@ -78,3 +78,7 @@ details.menu .pop{position:absolute;z-index:4;background:#fff;border:1px solid v
 .filelist{margin:4px 0;padding-left:18px}
 #lightbox{position:fixed;inset:0;background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center;z-index:20;cursor:zoom-out}
 #lightbox img{max-width:92vw;max-height:92vh;background:#fff}
+[hidden]{display:none!important}
+.attach{margin-bottom:8px}
+.attach .field{margin:6px 0 0}
+form.dragover{outline:2px dashed var(--acc);outline-offset:2px;background:#eef3ff}
