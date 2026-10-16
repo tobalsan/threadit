@@ -1265,3 +1265,17 @@ def test_back_closes_palette_and_action_returns_focus(server, browser):
         expect(sidebar_search).to_be_focused()
     finally:
         ctx.close()
+
+
+def test_toolbar_shows_thread_title(server, browser):
+    human, _ = seed_users(server)
+    area = call(server, "POST", "/api/areas", human, {"name": "Bar", "description": "d"})
+    thread = make_thread(server, human, area["id"], "A rather specific title " + "long " * 30)
+    ctx, page = open_page(browser, server, human)
+    try:
+        page.goto(f"{server}/#/thread/{thread['id']}")
+        expect(page.locator("#bartitle")).to_have_text(thread["title"])
+        style = page.locator("#bartitle").evaluate("e => [getComputedStyle(e).textOverflow, getComputedStyle(e).whiteSpace]")
+        assert style == ["ellipsis", "nowrap"]
+    finally:
+        ctx.close()

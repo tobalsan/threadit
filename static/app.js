@@ -1294,6 +1294,7 @@
       var t = d.thread;
       var root = el('div', { class: 'screen' });
       root.areaId = t.area_id;
+      root.pageTitle = t.title;
       var ctx = { closed: !!t.closed, targetId: targetParam ? Number(targetParam) : null, added: function () { route(); }, onOpScore: function () { paintInspector(); } };
       var titleSlot = el('div');
       var isOwner = me.id === t.owner.id;
