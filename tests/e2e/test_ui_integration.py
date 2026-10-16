@@ -47,7 +47,7 @@ def test_area_pagination_pin_and_default_sort(server, browser):
         login(page, server, human)
         page.goto(f"{server}/#/area/{area['id']}")
         expect(page.locator("#sortsel")).to_have_value("importance")
-        rows = page.locator(".card.thread")
+        rows = page.locator(".li.thread")
         expect(rows).to_have_count(101)  # 1 pinned + first page of 100
         page.get_by_role("button", name="Load more threads").click()
         expect(rows).to_have_count(103)

@@ -52,8 +52,8 @@ def test_markdown_renders_and_is_xss_safe(server, browser):
         expect(card.locator("ul li strong")).to_have_text("kind")
         expect(card.locator("ul li em")).to_have_text("careful")
         expect(card.locator("img")).to_have_count(0)
-        expect(page.locator(".card.thread a.t strong")).to_have_text("Bold")
-        expect(page.locator(".card.thread a.t i")).to_have_count(0)
+        expect(page.locator(".li.thread a.t strong")).to_have_text("Bold")
+        expect(page.locator(".li.thread a.t i")).to_have_count(0)
 
         page.goto(f"{server}/#/thread/{thread['id']}")
         h1 = page.locator("h1")
@@ -251,7 +251,7 @@ def test_editing_and_modified_indicator(server, browser):
         expect(apage.get_by_role("button", name="Edit", exact=True)).to_have_count(1)  # own message only
         # list row shows it too
         page.goto(f"{server}/#/area/edits")
-        expect(page.locator(".card.thread").get_by_text("(modified)")).to_be_visible()
+        expect(page.locator(".li.thread").get_by_text("(modified)")).to_be_visible()
 
         # closed thread: edit buttons disabled
         call(server, "POST", f"/api/threads/{thread['id']}/close", human, {"reason": "completed"})
@@ -563,14 +563,14 @@ def test_area_sidebar_and_quick_vote_from_list(server, browser):
         page.goto(f"{server}/#/area/side?state=all")
         side = page.get_by_role("complementary", name="Area description")
         expect(side.locator("strong")).to_have_text("Rules")
-        row = page.locator(".card.thread").filter(has_text="vote me")
+        row = page.locator(".li.thread").filter(has_text="vote me")
         assert side.bounding_box()["x"] > row.bounding_box()["x"] + row.bounding_box()["width"] - 1
 
         page.get_by_role("button", name="Upvote vote me").click()
         expect(row.locator(".imp")).to_contain_text("1")
         page.get_by_role("button", name="Upvote vote me").click()
         page.get_by_role("button", name="Downvote vote me").click()
-        expect(row.locator(".imp span")).to_have_text("1")
+        expect(row.locator(".imp output")).to_have_text("1")
         got = call(server, "GET", f"/api/threads/{thread['id']}", human)["thread"]
         assert got["importance"] == 1
         expect(page.get_by_role("button", name="Upvote done one")).to_have_count(0)
@@ -590,14 +590,14 @@ def test_list_score_colors_and_debounced_importance_resort(server, browser):
     ctx, page = open_page(browser, server, human)
     try:
         page.goto(f"{server}/#/area/rank")
-        titles = page.locator(".card.thread a.t")
+        titles = page.locator(".li.thread a.t")
         expect(titles).to_have_text(["top one", "low one"])
-        top_imp = page.locator(".card.thread").filter(has_text="top one").locator(".imp")
-        top_score = top_imp.locator("span")
+        top_imp = page.locator(".li.thread").filter(has_text="top one").locator(".imp")
+        top_score = top_imp.locator("output")
         expect(top_imp).to_have_class(re.compile("sc-warm"))
-        low_imp = page.locator(".card.thread").filter(has_text="low one").locator(".imp")
-        low_score = low_imp.locator("span")
-        expect(low_imp).to_have_class("imp sc ")
+        low_imp = page.locator(".li.thread").filter(has_text="low one").locator(".imp")
+        low_score = low_imp.locator("output")
+        expect(low_imp).to_have_class("vote v imp sc")
         up = page.get_by_role("button", name="Upvote low one")
         up.click()
         expect(low_score).to_have_text("1")
@@ -635,7 +635,7 @@ def test_home_hot_list_paging_and_area_link(server, browser):
         call(server, "POST", f"/api/messages/{first['op_message_id']}/votes", human, {"delta": 5})
         page.goto(f"{server}/#/")
         page.reload()
-        rows = page.locator(".card.thread")
+        rows = page.locator(".li.thread")
         expect(rows).to_have_count(2)
         expect(rows.nth(0)).to_contain_text("alpha-first")
         expect(rows.nth(1)).to_contain_text("beta-second")
@@ -677,5 +677,95 @@ def test_thread_page_op_block_and_reply_count(server, browser):
         expect(tops.nth(2)).to_contain_text("reply two")
         page.goto(f"{server}/#/thread/{empty['id']}")
         expect(page.get_by_text("No replies yet")).to_be_visible()
+    finally:
+        ctx.close()
+
+
+def test_theme_toggle_persists_and_system_follows_scheme(server, browser):
+    human, _ = seed_users(server)
+    ctx = browser.new_context(color_scheme="light")
+    page = ctx.new_page()
+    try:
+        login(page, server, human)
+        html = page.locator("html")
+        expect(html).to_have_attribute("data-theme", "light")
+        expect(page.get_by_role("radio", name="System")).to_have_attribute("aria-checked", "true")
+        page.get_by_role("radio", name="Dark").click()
+        expect(html).to_have_attribute("data-theme", "dark")
+        page.reload()
+        expect(html).to_have_attribute("data-theme", "dark")
+        expect(page.get_by_role("radio", name="Dark")).to_have_attribute("aria-checked", "true")
+        page.get_by_role("radio", name="Light").click()
+        page.reload()
+        expect(html).to_have_attribute("data-theme", "light")
+        page.get_by_role("radio", name="System").click()
+        page.emulate_media(color_scheme="dark")
+        expect(html).to_have_attribute("data-theme", "dark")
+        page.emulate_media(color_scheme="light")
+        expect(html).to_have_attribute("data-theme", "light")
+    finally:
+        ctx.close()
+
+
+def test_shell_nav_attention_badge_toolbar_and_collapse(server, browser):
+    human, agent = seed_users(server)
+    area = call(server, "POST", "/api/areas", human, {"name": "Shell", "description": "d"})
+    thread = make_thread(server, agent, area["id"], "Ping", "hello @hanna")
+    call(server, "POST", f"/api/threads/{thread['id']}/messages", agent, {"body": "again @hanna"})
+    ctx, page = open_page(browser, server, human)
+    try:
+        nav = page.get_by_role("navigation", name="Main")
+        expect(nav.get_by_role("link", name="Home")).to_have_attribute("aria-current", "page")
+        expect(nav.get_by_role("link", name="Admin")).to_be_visible()
+        expect(nav.get_by_role("link", name="Attention").locator(".navcount")).to_have_text("2")
+        expect(page.locator("#bartitle")).to_have_text("Home")
+        expect(page.locator("#newbtn")).to_be_hidden()
+        nav.get_by_role("link", name="Areas").click()
+        expect(nav.get_by_role("link", name="Areas")).to_have_attribute("aria-current", "page")
+        expect(page.locator("#bartitle")).to_have_text("Areas")
+        page.goto(f"{server}/#/area/shell")
+        expect(page.locator("#bartitle")).to_have_text("Shell")
+        page.get_by_role("button", name="New thread").click()
+        expect(page.get_by_label("Title")).to_be_focused()
+        page.set_viewport_size({"width": 900, "height": 700})
+        expect(nav.get_by_role("link", name="Users")).to_be_visible()
+        expect(nav.get_by_role("link", name="Users").locator(".t")).to_be_hidden()
+        assert page.locator(".sidebar").bounding_box()["width"] < 80
+        page.get_by_role("button", name="Log out").click()
+        expect(page.locator(".sidebar")).to_be_hidden()
+    finally:
+        ctx.close()
+
+
+def test_thread_list_cards_show_meta_and_area_controls(server, browser):
+    human, agent = seed_users(server)
+    area = call(server, "POST", "/api/areas", human, {"name": "Cards", "description": "d"})
+    pinned = make_thread(server, human, area["id"], "pin me")
+    call(server, "PUT", f"/api/threads/{pinned['id']}/pin", human, {"pinned": True})
+    mentioned = make_thread(server, agent, area["id"], "needs hanna", "hi @hanna")
+    call(server, "POST", f"/api/threads/{mentioned['id']}/messages", human, {"body": "a reply"})
+    make_thread(server, human, area["id"], "plain one")
+    ctx, page = open_page(browser, server, human)
+    try:
+        page.goto(f"{server}/#/area/cards")
+        pin_row = page.locator(".li.thread").filter(has_text="pin me")
+        expect(pin_row.locator(".meta .pin")).to_have_text("Pinned")
+        expect(pin_row.get_by_label("0 replies")).to_be_visible()
+        row = page.locator(".li.thread").filter(has_text="needs hanna")
+        expect(row.locator(".need")).to_have_text("Needs you · 1")
+        expect(row.locator(".who")).to_contain_text("agentx")
+        expect(row.locator(".who .ag")).to_be_visible()
+        expect(row.get_by_label("1 reply")).to_be_visible()
+        expect(row.get_by_role("link", name="Cards")).to_have_attribute("href", "#/area/cards")
+        for sel in ("#sortsel", "#ordersel", "#statesel"):
+            if sel == "#ordersel":
+                page.locator("#sortsel").select_option("created")
+            expect(page.locator(sel)).to_be_visible()
+        assert row.bounding_box()["y"] > 0
+        first = page.locator(".li.thread").nth(1).bounding_box()
+        second = page.locator(".li.thread").nth(2).bounding_box()
+        assert 7 <= second["y"] - (first["y"] + first["height"]) <= 9
+        page.goto(f"{server}/#/")
+        expect(page.locator(".li.thread")).to_have_count(3)
     finally:
         ctx.close()

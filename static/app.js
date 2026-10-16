@@ -83,6 +83,20 @@
     setTimeout(function () { if (d.parentNode) d.parentNode.removeChild(d); }, 5000);
   }
   function fmt(ts) { var d = new Date(ts); return isNaN(d) ? String(ts) : d.toLocaleString(); }
+  // short relative time for lists; the full date goes in a title attribute
+  function ago(ts) {
+    var d = new Date(ts);
+    if (isNaN(d)) return String(ts);
+    var s = (Date.now() - d.getTime()) / 1000;
+    if (s < 60) return 'just now';
+    if (s < 3600) return Math.floor(s / 60) + 'm ago';
+    if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+    if (s < 30 * 86400) return Math.floor(s / 86400) + 'd ago';
+    return d.toLocaleDateString();
+  }
+  function who(u) {
+    return el('span', { class: 'who' }, u.username, u.account_type === 'agent' ? el('span', { class: 'ag', title: 'Agent', 'aria-label': '(agent)', text: '✦' }) : null);
+  }
   function badge(type) { return el('span', { class: 'badge ' + type, text: type }); }
   function userTag(u) { return el('span', null, el('strong', { text: u.username }), ' ', badge(u.account_type)); }
   function errBox(e, retry) {
@@ -398,23 +412,102 @@
     return wrap;
   }
 
+  // ---------- theme ----------
+  var THEME_KEY = 'threaddit:theme';
+  var THEMES = [['system', 'System', '◐'], ['light', 'Light', '☀'], ['dark', 'Dark', '☾']];
+  var darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
+  function themePref() {
+    var v = null;
+    try { v = localStorage.getItem(THEME_KEY); } catch (e) { /* storage unavailable */ }
+    return v === 'light' || v === 'dark' ? v : 'system';
+  }
+  function applyTheme() {
+    var pref = themePref();
+    document.documentElement.setAttribute('data-theme', pref === 'system' ? (darkQuery.matches ? 'dark' : 'light') : pref);
+  }
+  function setTheme(pref) {
+    try { localStorage.setItem(THEME_KEY, pref); } catch (e) { /* storage unavailable: session only */ }
+    applyTheme(); paintThemeSeg();
+  }
+  function paintThemeSeg() {
+    var seg = document.getElementById('themeseg');
+    var cur = themePref();
+    clear(seg);
+    THEMES.forEach(function (t, i) {
+      var b = el('button', { type: 'button', role: 'radio', 'aria-checked': String(t[0] === cur), 'aria-label': t[1], tabindex: t[0] === cur ? '0' : '-1',
+        onclick: function () { setTheme(t[0]); seg.children[i].focus(); } },
+        el('span', { class: 'tx', text: t[1] }), el('span', { class: 'gl', 'aria-hidden': 'true', text: t[2] }));
+      seg.appendChild(b);
+    });
+  }
+  document.getElementById('themeseg').addEventListener('keydown', function (ev) {
+    var d = ev.key === 'ArrowRight' || ev.key === 'ArrowDown' ? 1 : ev.key === 'ArrowLeft' || ev.key === 'ArrowUp' ? -1 : 0;
+    if (!d) return;
+    ev.preventDefault();
+    var i = THEMES.map(function (t) { return t[0]; }).indexOf(themePref());
+    setTheme(THEMES[(i + d + THEMES.length) % THEMES.length][0]);
+    document.getElementById('themeseg').children[(i + d + THEMES.length) % THEMES.length].focus();
+  });
+  if (darkQuery.addEventListener) darkQuery.addEventListener('change', applyTheme);
+  applyTheme(); paintThemeSeg();
+
   // ---------- chrome ----------
-  function renderChrome() {
-    var nav = document.getElementById('nav');
-    var who = document.getElementById('whoami');
-    clear(nav); clear(who);
-    document.getElementById('searchform').classList.toggle('hidden', !me);
+  var SVG_NS = 'http://www.w3.org/2000/svg';
+  var NAV_ICONS = { Home: ['#0a84ff', 'M3 11 12 4l9 7M5 10v10h14V10'], Areas: ['#ff9f0a', 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z'],
+    Attention: ['#ff375f', 'M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 21h4'], Activity: ['#30a14e', 'M3 12h4l3-8 4 16 3-8h4'],
+    Users: ['#bf5af2', 'M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM2 20c0-4 3-6 7-6s7 2 7 6M17 5a3 3 0 0 1 0 6M19 14c2 .7 3 2.5 3 5'],
+    Admin: ['#7c7c82', 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z'] };
+  function navIcon(name) {
+    var svg = document.createElementNS(SVG_NS, 'svg');
+    var path = document.createElementNS(SVG_NS, 'path');
+    [['viewBox', '0 0 24 24'], ['fill', 'none'], ['stroke', 'currentColor'], ['stroke-width', '1.8'], ['stroke-linecap', 'round'], ['stroke-linejoin', 'round'], ['aria-hidden', 'true']]
+      .forEach(function (a) { svg.setAttribute(a[0], a[1]); });
+    path.setAttribute('d', NAV_ICONS[name][1]);
+    svg.appendChild(path);
+    return el('span', { class: 'ic', style: 'color:' + NAV_ICONS[name][0] }, svg);
+  }
+  var attentionCount = 0;
+  function refreshAttentionCount() {
     if (!me) return;
+    api('GET', '/api/attention' + qs({ status: 'unacknowledged', limit: PAGE })).then(function (r) {
+      attentionCount = r.items.length + (r.has_more ? 1 : 0);
+      attentionHasMore = r.has_more;
+      if (me) paintNav();
+    }).catch(function () { /* the badge is optional */ });
+  }
+  var attentionHasMore = false;
+  function paintNav() {
+    var nav = document.getElementById('nav');
     var h = location.hash || '#/';
+    clear(nav);
     [['#/', 'Home'], ['#/areas', 'Areas'], ['#/attention', 'Attention'], ['#/activity', 'Activity'], ['#/users', 'Users']]
       .concat(me.is_superadmin ? [['#/admin', 'Admin']] : []).forEach(function (l) {
         var cur = l[0] === '#/' ? (h === '#/' || h.indexOf('#/?') === 0) : l[0] === '#/areas' ? (h.indexOf('#/area') === 0 || h.indexOf('#/thread') === 0) : h.indexOf(l[0]) === 0;
-        nav.appendChild(el('a', { href: l[0], class: cur ? 'cur' : '', 'aria-current': cur ? 'page' : null, text: l[1] }));
+        var count = l[1] === 'Attention' && attentionCount > 0 ? (attentionHasMore ? (attentionCount - 1) + '+' : String(attentionCount)) : null;
+        nav.appendChild(el('a', { href: l[0], 'aria-current': cur ? 'page' : null, 'aria-label': l[1] + (count ? ', ' + count + ' need your attention' : '') }, navIcon(l[1]), el('span', { class: 't', text: l[1] }),
+          count ? el('span', { class: 'navcount', 'aria-hidden': 'true', text: count }) : null));
       });
-    who.appendChild(userTag(me));
-    if (me.is_superadmin) who.appendChild(el('span', { class: 'badge super', text: 'superadmin' }));
-    who.appendChild(el('button', { type: 'button', class: 'small', text: 'Log out', onclick: function () { setToken(null); me = null; renderChrome(); location.hash = '#/'; route(); } }));
   }
+  function renderChrome() {
+    var who = document.getElementById('whoami');
+    clear(who);
+    document.body.classList.toggle('anon', !me);
+    if (!me) { clear(document.getElementById('nav')); return; }
+    paintNav();
+    who.appendChild(el('div', { class: 'me' }, el('div', { class: 'avatar' + (me.account_type === 'agent' ? ' agent' : ''), 'aria-hidden': 'true', text: me.username.charAt(0).toUpperCase() }),
+      el('span', null, el('b', { text: me.username }), el('small', null, badge(me.account_type), me.is_superadmin ? el('span', { class: 'badge super', text: 'superadmin' }) : null))));
+    who.appendChild(el('button', { type: 'button', class: 'btn lo', 'aria-label': 'Log out', onclick: function () { setToken(null); me = null; attentionCount = 0; renderChrome(); location.hash = '#/'; route(); } },
+      el('span', { 'aria-hidden': 'true', text: '⏻' }), el('span', { class: 'tx', text: 'Log out' })));
+  }
+  // toolbar: page title and the "New thread" button (shown by views that give a handler)
+  var PAGE_TITLES = { '': 'Home', areas: 'Areas', area: 'Area', thread: 'Thread', context: 'Thread', attention: 'Attention', activity: 'Activity', search: 'Search', users: 'Users', admin: 'Admin' };
+  var newThreadHandler = null;
+  function setToolbar(title, onNew) {
+    document.getElementById('bartitle').textContent = title;
+    newThreadHandler = onNew || null;
+    document.getElementById('newbtn').hidden = !newThreadHandler;
+  }
+  document.getElementById('newbtn').addEventListener('click', function () { if (newThreadHandler) newThreadHandler(); });
 
   // ---------- auth screens ----------
   function viewAuth(note) {
@@ -485,6 +578,8 @@
     var qi = h.indexOf('?'); if (qi >= 0) { q = h.slice(qi + 1); h = h.slice(0, qi); }
     var params = new URLSearchParams(q);
     var parts = h.split('/').filter(Boolean);
+    setToolbar(PAGE_TITLES[parts[0] || ''] || 'Threaddit');
+    refreshAttentionCount();
     var fn;
     if (!parts.length) fn = function () { return viewHome(params); };
     else if (parts[0] === 'areas') fn = viewAreas;
@@ -502,7 +597,9 @@
       Promise.resolve().then(fn).then(function (node) {
         if (id !== navId) return;
         clear(main); if (node) main.appendChild(node);
-        var tgt = main.querySelector('.target'); if (tgt) tgt.scrollIntoView({ block: 'center' }); else main.focus();
+        if (node && node.pageTitle) setToolbar(node.pageTitle, node.onNewThread);
+        var tgt = main.querySelector('.target');
+        if (tgt) tgt.scrollIntoView({ block: 'center' }); else { document.getElementById('scroll').scrollTop = 0; main.focus({ preventScroll: true }); }
       }).catch(function (e) {
         if (id !== navId) return;
         if (e.code === 'account_pending') { viewPending(); return; }
@@ -539,22 +636,25 @@
     var HOME_PAGE = 20;
     var page = Math.max(1, parseInt(params.get('page'), 10) || 1);
     return api('GET', '/api/threads' + qs({ sort: 'hot', state: 'active', limit: HOME_PAGE, offset: (page - 1) * HOME_PAGE })).then(function (r) {
-      var root = el('div');
+      var root = el('div', { class: 'screen' });
       root.appendChild(el('h1', { text: 'Home' }));
+      root.appendChild(el('p', { class: 'sub', text: 'Hot threads across all areas' }));
       if (!r.threads.length) root.appendChild(el('div', { class: 'empty', text: 'No active threads yet.' }));
-      r.threads.forEach(function (t) { root.appendChild(threadRow(t)); });
-      var nav = el('div', { class: 'row' },
-        page > 1 ? el('a', { href: '#/' + (page > 2 ? '?page=' + (page - 1) : ''), text: 'Previous' }) : null,
-        r.has_more ? el('a', { href: '#/?page=' + (page + 1), text: 'Next' }) : null);
+      var rows = el('div', { class: 'list' });
+      r.threads.forEach(function (t) { rows.appendChild(threadRow(t)); });
+      root.appendChild(rows);
+      var nav = el('div', { class: 'pager' },
+        page > 1 ? el('a', { class: 'btn', href: '#/' + (page > 2 ? '?page=' + (page - 1) : ''), text: 'Previous' }) : null,
+        r.has_more ? el('a', { class: 'btn', href: '#/?page=' + (page + 1), text: 'Next' }) : null);
       if (nav.firstChild) root.appendChild(nav);
       return root;
     });
   }
   function viewAreas() {
     return api('GET', '/api/areas').then(function (r) {
-      var root = el('div'); var formSlot = el('div');
-      root.appendChild(el('div', { class: 'row' }, el('h1', { class: 'grow', text: 'Areas' }),
-        el('button', { type: 'button', text: 'New area', onclick: function () {
+      var root = el('div', { class: 'screen' }); var formSlot = el('div');
+      root.appendChild(el('div', { class: 'pagehead' }, el('h1', { text: 'Areas' }),
+        el('button', { type: 'button', class: 'btn', text: 'New area', onclick: function () {
           if (formSlot.firstChild) { clear(formSlot); return; }
           formSlot.appendChild(areaForm(null, route));
         } })));
@@ -575,25 +675,37 @@
 
   // ---------- area ----------
   // list score tint: >=5 red, 1-4 orange, 0 default, -1 to -4 faded, <= -5 nearly white
-  function scoreClass(v) { return 'sc ' + (v >= 5 ? 'sc-hot' : v > 0 ? 'sc-warm' : v <= -5 ? 'sc-cold' : v < 0 ? 'sc-cool' : ''); }
+  function scoreClass(v) { return ('sc ' + (v >= 5 ? 'sc-hot' : v > 0 ? 'sc-warm' : v <= -5 ? 'sc-cold' : v < 0 ? 'sc-cool' : '')).trim(); }
   // onVoted(): called after a quick vote changed t.importance (used to re-sort the list)
   function threadRow(t, onVoted) {
     var link = el('a', { class: 't', href: '#/thread/' + t.id }, renderInline(t.title, true));
-    var score = el('span', { text: String(t.importance) });
+    var score = el('output', { 'aria-live': 'polite', text: String(t.importance) });
     // quick +/-1 on the OP (importance = OP score); closed threads are read-only
     function vote(d) {
       return t.closed ? null : el('button', { type: 'button', class: 'qv', 'aria-label': (d > 0 ? 'Upvote ' : 'Downvote ') + t.title, title: d > 0 ? '+1' : '-1', text: d > 0 ? '▲' : '▼', onclick: function (ev) {
-        act(ev.currentTarget, function () { return api('POST', '/api/messages/' + t.op_message_id + '/votes', { delta: d }).then(function (r) { t.importance = r.score; score.textContent = String(r.score); imp.className = 'imp ' + scoreClass(r.score); if (onVoted) onVoted(); }); });
+        act(ev.currentTarget, function () {
+          return api('POST', '/api/messages/' + t.op_message_id + '/votes', { delta: d }).then(function (r) {
+            t.importance = r.score; score.textContent = String(r.score);
+            imp.className = 'vote v imp ' + scoreClass(r.score);
+            void imp.offsetWidth; imp.classList.add('spring');
+            if (onVoted) onVoted();
+          });
+        });
       } });
     }
-    var imp = el('div', { class: 'imp ' + scoreClass(t.importance), title: 'Importance (OP score)' }, vote(1), score, el('small', { text: 'score' }), vote(-1));
-    var row = el('div', { class: 'card thread' }, imp,
-      el('div', { class: 'grow' },
-        el('div', null, t.pinned ? el('span', { class: 'badge pin', text: 'pinned' }) : null, ' ',
-          t.closed ? el('span', { class: 'badge closed', text: 'closed: ' + t.closed.reason }) : null, ' ',
-          link, ' ', modified(t)),
-        el('div', { class: 'mut' }, el('a', { href: '#/area/' + areaRef(t), text: t.area_name }), ' · ', userTag(t.owner), ' · ' + t.message_count + ' msgs · created ' + fmt(t.created_at) + ' · active ' + fmt(t.last_activity_at)),
-        t.pending_attention ? el('span', { class: 'attn', text: t.pending_attention + ' need your attention' }) : null));
+    var imp = el('div', { class: 'vote v imp ' + scoreClass(t.importance), role: 'group', 'aria-label': 'Importance (OP score)', title: 'Importance (OP score)' }, vote(1), score, vote(-1));
+    var replies = Math.max(0, t.message_count - 1);
+    var row = el('article', { class: 'li thread' }, imp,
+      el('div', { class: 'body' },
+        el('h3', null, link, ' ', modified(t)),
+        el('div', { class: 'meta' },
+          t.pinned ? el('span', { class: 'pin', text: 'Pinned' }) : null,
+          t.closed ? el('span', { text: 'Closed · ' + t.closed.reason }) : null,
+          t.pending_attention ? el('span', { class: 'need', text: 'Needs you · ' + t.pending_attention }) : null,
+          el('a', { href: '#/area/' + areaRef(t), text: t.area_name }),
+          who(t.owner),
+          el('span', { class: 'rc', 'aria-label': replies + (replies === 1 ? ' reply' : ' replies'), text: '💬 ' + replies }),
+          el('span', { title: 'Last activity ' + fmt(t.last_activity_at), text: ago(t.last_activity_at) }))));
     row.thread = t;
     return row;
   }
@@ -606,20 +718,22 @@
       return api('GET', '/api/threads' + qs({ area_id: area.id, state: state, sort: sort, order: order, limit: PAGE })).then(function (list) { return [area, list]; });
     }).then(function (rs) {
       var area = rs[0], list = rs[1];
-      var page = el('div', { class: 'with-side' });
+      var page = el('div', { class: 'with-side screen' });
       var root = el('div', { class: 'main-col' });
       var slot = el('div');
-      root.appendChild(el('div', { class: 'row' }, el('h1', { class: 'grow', text: area.name }),
-        el('button', { type: 'button', text: 'Edit area', onclick: function () {
+      page.pageTitle = area.name;
+      page.onNewThread = function () {
+        if (slot.firstChild && slot.dataset.k === 't') { clear(slot); return; }
+        clear(slot); slot.dataset.k = 't'; slot.appendChild(threadForm(area, function () { clear(slot); }));
+        var first = slot.querySelector('input'); if (first) first.focus();
+      };
+      root.appendChild(el('div', { class: 'pagehead' }, el('h1', { text: area.name }),
+        el('button', { type: 'button', class: 'btn', text: 'Edit area', onclick: function () {
           if (slot.firstChild && slot.dataset.k === 'e') { clear(slot); return; }
           clear(slot); slot.dataset.k = 'e'; slot.appendChild(areaForm(area, function (a) {
             var q = location.hash.indexOf('?'), next = '#/area/' + areaRef(a) + (q >= 0 ? location.hash.slice(q) : '');
             if (location.hash === next) route(); else location.hash = next;
           }));
-        } }),
-        el('button', { type: 'button', class: 'primary', text: 'New thread', onclick: function () {
-          if (slot.firstChild && slot.dataset.k === 't') { clear(slot); return; }
-          clear(slot); slot.dataset.k = 't'; slot.appendChild(threadForm(area, function () { clear(slot); }));
         } })));
       page.appendChild(root);
       page.appendChild(el('aside', { class: 'side card', 'aria-label': 'Area description' }, el('h2', { text: 'About this area' }),
@@ -635,7 +749,7 @@
       var stateSel = el('select', { onchange: function () { go(stateSel.value, sort, order); } },
         [['active', 'Active'], ['closed', 'Closed only'], ['all', 'Active + closed']].map(function (o) {
           return el('option', { value: o[0], text: o[1], selected: o[0] === state }); }));
-      root.appendChild(el('div', { class: 'row' }, el('label', { for: 'sortsel', text: 'Sort' }), sortSel, dated ? orderSel : null, el('label', { for: 'statesel', text: 'Show' }), stateSel));
+      root.appendChild(el('div', { class: 'ctl' }, el('label', { for: 'sortsel', text: 'Sort' }), sortSel, dated ? orderSel : null, el('label', { for: 'statesel', text: 'Show' }), stateSel));
       sortSel.id = 'sortsel'; stateSel.id = 'statesel';
       // importance sort: re-order loaded rows 2s after the last quick vote (debounced), mirroring server order
       // (score, then last activity, then created, newest first)
@@ -650,17 +764,17 @@
         });
       }
       function voted() { if (sort !== 'importance') return; clearTimeout(resortTimer); resortTimer = setTimeout(resort, RESORT_DELAY_MS); }
-      var pinnedRows = el('div');
-      if (list.pinned.length) { root.appendChild(el('h2', { text: 'Pinned' })); root.appendChild(pinnedRows); list.pinned.forEach(function (t) { pinnedRows.appendChild(threadRow(t, voted)); }); }
-      root.appendChild(el('h2', { text: state === 'closed' ? 'Closed threads' : 'Threads' }));
+      var pinnedRows = el('div', { class: 'list' });
+      if (list.pinned.length) { root.appendChild(el('h2', { class: 'seclabel', text: 'Pinned' })); root.appendChild(pinnedRows); list.pinned.forEach(function (t) { pinnedRows.appendChild(threadRow(t, voted)); }); }
+      root.appendChild(el('h2', { class: 'seclabel', text: state === 'closed' ? 'Closed threads' : 'Threads' }));
       if (!list.threads.length && !list.pinned.length) root.appendChild(el('div', { class: 'empty', text: 'No threads here.' }));
-      var rows = el('div'); var more = el('div'); var offset = 0;
+      var rows = el('div', { class: 'list' }); var more = el('div', { class: 'pager' }); var offset = 0;
       root.appendChild(rows); root.appendChild(more);
       function showPage(page) {
         page.threads.forEach(function (t) { rows.appendChild(threadRow(t, voted)); });
         offset += page.threads.length;
         clear(more);
-        if (page.has_more) more.appendChild(el('button', { type: 'button', text: 'Load more threads', onclick: function (ev) {
+        if (page.has_more) more.appendChild(el('button', { type: 'button', class: 'btn', text: 'Load more threads', onclick: function (ev) {
           act(ev.currentTarget, function () {
             return api('GET', '/api/threads' + qs({ area_id: area.id, state: state, sort: sort, order: order, limit: PAGE, offset: offset })).then(showPage);
           });
@@ -797,7 +911,7 @@
   function viewThread(id, targetParam) {
     return api('GET', '/api/threads/' + encodeURIComponent(id)).then(function (d) {
       var t = d.thread;
-      var root = el('div');
+      var root = el('div', { class: 'screen' });
       var ctx = { closed: !!t.closed, targetId: targetParam ? Number(targetParam) : null, added: function () { route(); } };
       root.appendChild(el('div', { class: 'mut' }, el('a', { href: '#/area/' + areaRef(t), text: t.area_name })));
       var titleSlot = el('div');
@@ -866,7 +980,7 @@
   // ---------- context ----------
   function viewContext(id) {
     return api('GET', '/api/messages/' + encodeURIComponent(id) + '/context').then(function (c) {
-      var root = el('div');
+      var root = el('div', { class: 'screen' });
       var closed = !!c.thread.closed;
       root.appendChild(el('div', { class: 'mut' }, el('a', { href: '#/area/' + areaRef(c.area), text: c.area.name })));
       root.appendChild(el('h1', null, renderInline(c.thread.title, false), ' ', modified(c.thread)));
@@ -894,7 +1008,7 @@
       return api('GET', '/api/attention' + qs({ status: status, include_closed: incl ? 'true' : '', order: 'desc', limit: PAGE, offset: offset }));
     }
     return fetchPage(0).then(function (r) {
-      var root = el('div'); root.appendChild(el('h1', { text: 'Attention' }));
+      var root = el('div', { class: 'screen' }); root.appendChild(el('h1', { text: 'Attention' }));
       var statuses = me.account_type === 'agent' ? ['all', 'unacknowledged', 'processing', 'processed'] : ['all', 'unacknowledged', 'acknowledged'];
       var sel = el('select', { onchange: function () { location.hash = '#/attention' + qs({ status: sel.value, include_closed: incl ? 'true' : '' }); } },
         statuses.map(function (s) { return el('option', { value: s, text: s, selected: s === status }); }));
@@ -902,7 +1016,7 @@
       root.appendChild(el('div', { class: 'row' }, el('label', { for: 'attn-status', text: 'Status' }), sel, el('label', null, cb, ' include closed threads')));
       sel.id = 'attn-status';
       if (!r.items.length) root.appendChild(el('div', { class: 'empty', text: 'Nothing here.' }));
-      var list = el('div'); var more = el('div'); var offset = 0;
+      var list = el('div', { class: 'list' }); var more = el('div', { class: 'pager' }); var offset = 0;
       root.appendChild(list); root.appendChild(more);
       function showPage(page) {
         page.items.forEach(function (m) {
@@ -929,7 +1043,7 @@
   function viewSearch(params) {
     var q = params.get('q') || '';
     var incl = params.get('include_closed') === 'true';
-    var root = el('div'); root.appendChild(el('h1', { text: 'Search' }));
+    var root = el('div', { class: 'screen' }); root.appendChild(el('h1', { text: 'Search' }));
     var cb = el('input', { type: 'checkbox', checked: incl, onchange: function () { location.hash = '#/search' + qs({ q: q, include_closed: cb.checked ? 'true' : '' }); } });
     root.appendChild(el('label', null, cb, ' include closed threads'));
     if (!q) { root.appendChild(el('div', { class: 'empty', text: 'Type a query in the search box.' })); return Promise.resolve(root); }
@@ -978,8 +1092,8 @@
   var KIND = { area_created: 'created area', area_updated: 'updated area', thread_created: 'created thread', message_posted: 'posted a message in',
     message_edited: 'edited a message in', thread_edited: 'edited thread', thread_closed: 'closed thread', thread_reopened: 'reopened thread', thread_pinned: 'pinned thread', thread_unpinned: 'unpinned thread' };
   function viewActivity() {
-    var root = el('div'); root.appendChild(el('h1', { text: 'Activity' }));
-    var list = el('div'); var more = el('div'); root.appendChild(list); root.appendChild(more);
+    var root = el('div', { class: 'screen' }); root.appendChild(el('h1', { text: 'Activity' }));
+    var list = el('div', { class: 'list' }); var more = el('div', { class: 'pager' }); root.appendChild(list); root.appendChild(more);
     var lastId = null;
     function load() {
       clear(more); more.appendChild(el('div', { class: 'loading', text: 'Loading…' }));
@@ -1004,7 +1118,7 @@
   // ---------- users ----------
   function viewUsers() {
     return api('GET', '/api/users').then(function (r) {
-      var root = el('div'); root.appendChild(el('h1', { text: 'Users' }));
+      var root = el('div', { class: 'screen' }); root.appendChild(el('h1', { text: 'Users' }));
       r.users.forEach(function (u) {
         var card = el('div', { class: 'card user' });
         function paintUser() {
@@ -1034,7 +1148,7 @@
   function viewAdmin() {
     if (!me.is_superadmin) return Promise.resolve(el('div', { class: 'err', text: 'Superadmin only.' }));
     return api('GET', '/api/admin/users?status=all').then(function (r) {
-      var root = el('div'); root.appendChild(el('h1', { text: 'Accounts' }));
+      var root = el('div', { class: 'screen' }); root.appendChild(el('h1', { text: 'Accounts' }));
       var pend = r.users.filter(function (u) { return u.status === 'pending'; });
       root.appendChild(el('h2', { text: 'Pending approval (' + pend.length + ')' }));
       if (!pend.length) root.appendChild(el('div', { class: 'empty', text: 'No pending accounts.' }));

@@ -1,23 +1,40 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Threaddit</title>
 <link rel="stylesheet" href="/style.css">
 </head>
-<body>
+<body class="anon">
 <a class="skip" href="#main">Skip to content</a>
-<header id="topbar">
-  <a class="brand" href="#/">Threaddit</a>
-  <nav id="nav" aria-label="Main"></nav>
-  <form id="searchform" role="search" class="hidden">
-    <label for="searchbox" class="sr">Search</label>
-    <input id="searchbox" type="search" placeholder="Search areas, threads, messages" maxlength="200">
-  </form>
-  <div id="whoami"></div>
-</header>
-<main id="main" tabindex="-1"></main>
+<div class="shell">
+  <aside class="sidebar glass" id="sidebar" aria-label="Sidebar">
+    <a class="brand" href="#/"><i aria-hidden="true"></i><span>Threaddit</span></a>
+    <form id="searchform" class="search" role="search">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <label for="searchbox" class="sr">Search</label>
+      <input id="searchbox" type="search" placeholder="Search" maxlength="200">
+      <kbd aria-hidden="true">⌘K</kbd>
+    </form>
+    <nav class="nav" id="nav" aria-label="Main"></nav>
+    <div class="sb-foot">
+      <div>
+        <div class="label" id="theme-label">Appearance</div>
+        <div class="seg seg-theme" id="themeseg" role="radiogroup" aria-labelledby="theme-label"></div>
+      </div>
+      <div id="whoami"></div>
+    </div>
+  </aside>
+  <div class="main">
+    <header class="toolbar glass" id="toolbar">
+      <div class="bartitle" id="bartitle"></div>
+      <span class="sp"></span>
+      <button class="gbtn primary" id="newbtn" type="button" hidden>＋ New thread</button>
+    </header>
+    <div class="scroll" id="scroll"><main id="main" class="col" tabindex="-1"></main></div>
+  </div>
+</div>
 <div id="toast" role="status" aria-live="polite"></div>
 <noscript>Threaddit needs JavaScript.</noscript>
 <script src="/app.js"></script>
