@@ -802,6 +802,45 @@
     return f;
   }
 
+  // one popover at a time: closes on Esc, outside click and navigation; Esc returns focus to its button
+  var popEl = null, popOwner = null;
+  function closePop(refocus) {
+    if (popEl && popEl.parentNode) popEl.parentNode.removeChild(popEl);
+    var o = popOwner;
+    popEl = null; popOwner = null;
+    if (o) { o.setAttribute('aria-expanded', 'false'); if (refocus) o.focus(); }
+    document.removeEventListener('mousedown', popOutside, true);
+    document.removeEventListener('keydown', popKey, true);
+  }
+  function popOutside(ev) { if (popEl && !popEl.contains(ev.target) && !(popOwner && popOwner.contains(ev.target))) closePop(false); }
+  function popKey(ev) {
+    if (ev.key === 'Escape') { ev.stopPropagation(); closePop(true); return; }
+    var items = Array.prototype.slice.call(popEl.querySelectorAll('button,input'));
+    var i = items.indexOf(document.activeElement);
+    var next = popEl.classList.contains('tapback') ? ['ArrowRight', 'ArrowLeft'] : ['ArrowDown', 'ArrowUp'];
+    if (ev.key === next[0] || ev.key === next[1]) {
+      if (!items.length) return;
+      ev.preventDefault();
+      items[(i + (ev.key === next[0] ? 1 : items.length - 1)) % items.length].focus();
+    }
+  }
+  function openPop(btn, pop) {
+    var same = popOwner === btn;
+    closePop(false);
+    if (same) return;
+    document.body.appendChild(pop);
+    var r = btn.getBoundingClientRect();
+    pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - pop.offsetWidth - 8)) + 'px';
+    var below = r.bottom + 6;
+    pop.style.top = (pop.classList.contains('tapback') && r.top - pop.offsetHeight - 6 > 8 ? r.top - pop.offsetHeight - 6 : below) + 'px';
+    popEl = pop; popOwner = btn;
+    btn.setAttribute('aria-expanded', 'true');
+    document.addEventListener('mousedown', popOutside, true);
+    document.addEventListener('keydown', popKey, true);
+    var first = pop.querySelector('button,input'); if (first) first.focus();
+  }
+  window.addEventListener('hashchange', function () { closePop(false); });
+
   // ---------- messages ----------
   function buildTree(msgs) {
     var byId = {}, roots = [];
@@ -836,6 +875,7 @@
     function paint() {
       var closed = ctx.closed || !!m.thread_closed_reason;
       clear(body);
+      if (m.is_op) body.appendChild(el('div', { class: 'oplabel', text: 'Original post' }));
       body.appendChild(el('div', { class: 'row' }, userTag(m.author),
         m.is_op ? el('span', { class: 'badge closed', text: 'OP' }) : null,
         el('span', { class: 'mut', text: fmt(m.created_at) }), modified(m),
@@ -913,44 +953,52 @@
       var t = d.thread;
       var root = el('div', { class: 'screen' });
       var ctx = { closed: !!t.closed, targetId: targetParam ? Number(targetParam) : null, added: function () { route(); } };
-      root.appendChild(el('div', { class: 'mut' }, el('a', { href: '#/area/' + areaRef(t), text: t.area_name })));
       var titleSlot = el('div');
+      var isOwner = me.id === t.owner.id;
       function paintTitle() {
         clear(titleSlot);
-        titleSlot.appendChild(el('div', { class: 'row' }, el('h1', { class: 'grow' }, renderInline(t.title, false), ' ', modified(t)),
-          t.pinned ? el('span', { class: 'badge pin', text: 'pinned' }) : null));
+        titleSlot.appendChild(el('div', { class: 'ttl' }, el('h1', { class: 'ttitle' }, renderInline(t.title, false), ' ', modified(t)),
+          isOwner && !t.closed ? el('button', { type: 'button', class: 'pencil', 'aria-label': 'Edit title', title: 'Edit title', text: '✎', onclick: function () {
+            clear(titleSlot); titleSlot.appendChild(titleForm()); var i = titleSlot.querySelector('input'); i.focus(); i.select();
+          } }) : null));
       }
       function titleForm() {
         var input = el('input', { type: 'text', required: true, maxlength: 200, value: t.title, 'aria-label': 'Edit title' });
         var clearDraft = persist(input, 'title:' + t.id);
         var err = el('div');
-        var f = el('form', { class: 'row' }, input, el('button', { type: 'submit', class: 'primary small', text: 'Save title' }), el('button', { type: 'button', class: 'small', text: 'Cancel', onclick: function () { clearDraft(); paintTitle(); } }), err);
+        var f = el('form', { class: 'ttl' }, input, el('button', { type: 'submit', class: 'gbtn primary', text: 'Save title' }), el('button', { type: 'button', class: 'gbtn', text: 'Cancel', onclick: function () { clearDraft(); paintTitle(); } }), err);
+        input.addEventListener('keydown', function (ev) { if (ev.key === 'Escape') { clearDraft(); paintTitle(); } });
         formSubmit(f, err, function () { return api('PATCH', '/api/threads/' + t.id, { title: input.value.trim() }).then(function () { clearDraft(); route(); }); });
         return f;
       }
       paintTitle();
-      root.appendChild(titleSlot);
       var impl = el('span', { text: 'importance (OP score): ' + t.importance });
       ctx.onOpScore = function (v) { impl.textContent = 'importance (OP score): ' + v; };
-      root.appendChild(el('div', { class: 'mut' }, 'Started by ', userTag(t.owner), ' · ', impl));
-      var controls = el('div', { class: 'row' });
+      var replyTotal = Math.max(0, d.messages.length - 1);
+      root.appendChild(el('div', { class: 'thead' },
+        el('div', { class: 'crumb' }, el('a', { href: '#/area/' + areaRef(t), text: t.area_name })),
+        titleSlot,
+        el('div', { class: 'tmeta' }, el('span', null, 'by ', userTag(t.owner)), el('span', { text: 'Thread #' + t.id }),
+          el('span', { title: 'Last activity ' + fmt(t.last_activity_at), text: ago(t.last_activity_at) }),
+          el('span', { text: replyTotal + (replyTotal === 1 ? ' reply' : ' replies') }), impl)));
+      var controls = el('div', { class: 'owner' });
+      if (isOwner) {
+        controls.appendChild(el('button', { type: 'button', class: 'gbtn pin', 'aria-pressed': String(!!t.pinned), disabled: !!t.closed, title: t.pinned ? 'Unpin' : 'Pin to top', text: t.pinned ? '📌 Pinned' : '📌 Pin', onclick: function (ev) {
+          act(ev.currentTarget, function () { return api('PUT', '/api/threads/' + t.id + '/pin', { pinned: !t.pinned }).then(route); }); } }));
+      }
       if (t.closed) {
         root.appendChild(el('div', { class: 'notice' }, 'Closed (' + t.closed.reason + ') by ' + t.closed.by + ' on ' + fmt(t.closed.at) + '. Read-only: reopen to post, vote, react or pin. '));
-        controls.appendChild(el('button', { type: 'button', class: 'primary', text: 'Reopen thread', onclick: function (ev) {
+        controls.appendChild(el('button', { type: 'button', class: 'gbtn primary', text: 'Reopen thread', onclick: function (ev) {
           act(ev.currentTarget, function () { return api('POST', '/api/threads/' + t.id + '/reopen').then(route); }); } }));
       } else {
-        var menu = el('details', { class: 'menu' }, el('summary', { text: 'Close thread ▾' }),
-          el('div', { class: 'pop' },
+        controls.appendChild(el('button', { type: 'button', class: 'gbtn', 'aria-haspopup': 'menu', 'aria-expanded': 'false', text: 'Close thread ▾', onclick: function (ev) {
+          var btn = ev.currentTarget;
+          openPop(btn, el('div', { class: 'pop', role: 'menu' }, el('div', { class: 'cap', text: 'Close as…' }),
             ['completed', 'archived'].map(function (r) {
-              return el('button', { type: 'button', text: r === 'completed' ? 'Close as completed' : 'Close as archived', onclick: function (ev) {
-                act(ev.currentTarget, function () { return api('POST', '/api/threads/' + t.id + '/close', { reason: r }).then(route); }); } });
+              return el('button', { type: 'button', role: 'menuitem', text: r === 'completed' ? 'Close as completed' : 'Close as archived', onclick: function (e2) {
+                act(e2.currentTarget, function () { return api('POST', '/api/threads/' + t.id + '/close', { reason: r }).then(route); }); } });
             })));
-        controls.appendChild(menu);
-      }
-      if (me.id === t.owner.id) {
-        controls.appendChild(el('button', { type: 'button', disabled: !!t.closed, text: 'Edit title', onclick: function () { clear(titleSlot); titleSlot.appendChild(titleForm()); titleSlot.querySelector('input').focus(); } }));
-        controls.appendChild(el('button', { type: 'button', disabled: !!t.closed, text: t.pinned ? 'Unpin' : 'Pin to top', onclick: function (ev) {
-          act(ev.currentTarget, function () { return api('PUT', '/api/threads/' + t.id + '/pin', { pinned: !t.pinned }).then(route); }); } }));
+        } }));
       }
       root.appendChild(controls);
       var tree = buildTree(d.messages);

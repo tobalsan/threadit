@@ -175,7 +175,7 @@ def test_attachments_thumbnail_lightbox_and_download(server, browser):
         page.wait_for_function("document.querySelector('.thumb').naturalWidth > 0")
         # thumbnail sits right below the message body
         order = page.evaluate(
-            "() => { const b = document.querySelector('.msgbody'); return [...b.children].map(c => c.className).slice(0, 4); }"
+            "() => { const b = document.querySelector('.msgbody'); return [...b.children].map(c => c.className).filter(c => c !== 'oplabel').slice(0, 4); }"
         )
         assert order[1].startswith("md body") and order[2] == "attachments", order
 
@@ -257,7 +257,7 @@ def test_editing_and_modified_indicator(server, browser):
         call(server, "POST", f"/api/threads/{thread['id']}/close", human, {"reason": "completed"})
         page.goto(f"{server}/#/thread/{thread['id']}")
         expect(page.get_by_role("button", name="Edit", exact=True).first).to_be_disabled()
-        expect(page.get_by_role("button", name="Edit title")).to_be_disabled()
+        expect(page.get_by_role("button", name="Edit title")).to_have_count(0)
         assert other["author"]["username"] == "agentx"
     finally:
         ctx.close()
@@ -769,3 +769,59 @@ def test_thread_list_cards_show_meta_and_area_controls(server, browser):
         expect(page.locator(".li.thread")).to_have_count(3)
     finally:
         ctx.close()
+
+
+def test_thread_header_pin_toggle_and_close_popover(server, browser):
+    human, agent = seed_users(server)
+    area = call(server, "POST", "/api/areas", human, {"name": "Head", "description": "d"})
+    thread = make_thread(server, human, area["id"], "Header thread")
+    ctx, page = open_page(browser, server, human)
+    actx, apage = open_page(browser, server, agent)
+    try:
+        page.goto(f"{server}/#/thread/{thread['id']}")
+        expect(page.get_by_role("heading", name="Header thread")).to_be_visible()
+        expect(page.locator(".crumb").get_by_role("link", name="Head")).to_be_visible()
+        expect(page.locator(".oplabel")).to_have_text("Original post")
+        size = page.locator("h1.ttitle").evaluate("e => [getComputedStyle(e).fontSize, getComputedStyle(e).fontWeight]")
+        assert size == ["30px", "800"]
+
+        pin = page.get_by_role("button", name="Pin", exact=False)
+        expect(pin).to_have_attribute("aria-pressed", "false")
+        pin.click()
+        expect(page.get_by_role("button", name="Pinned")).to_have_attribute("aria-pressed", "true")
+        page.get_by_role("button", name="Pinned").click()
+        expect(page.get_by_role("button", name="Pin", exact=False)).to_have_attribute("aria-pressed", "false")
+
+        # hover pencil: Esc cancels, Enter saves
+        page.locator(".ttl").hover()
+        page.get_by_role("button", name="Edit title").click()
+        field = page.get_by_label("Edit title", exact=True)
+        field.fill("Discarded")
+        field.press("Escape")
+        expect(page.get_by_role("heading", name="Header thread")).to_be_visible()
+        page.get_by_role("button", name="Edit title").click()
+        field = page.get_by_label("Edit title", exact=True)
+        field.fill("Saved by enter")
+        field.press("Enter")
+        expect(page.get_by_role("heading", name="Saved by enter")).to_be_visible()
+
+        # close popover: Esc closes it and gives the focus back
+        close = page.get_by_role("button", name="Close thread")
+        close.click()
+        expect(page.get_by_role("menuitem", name="Close as completed")).to_be_visible()
+        expect(page.get_by_role("menuitem", name="Close as archived")).to_be_visible()
+        page.keyboard.press("Escape")
+        expect(page.get_by_role("menu")).to_have_count(0)
+        expect(close).to_be_focused()
+        close.click()
+        page.mouse.click(5, 5)
+        expect(page.get_by_role("menu")).to_have_count(0)
+
+        # non-owners get no pin toggle and no pencil
+        apage.goto(f"{server}/#/thread/{thread['id']}")
+        expect(apage.get_by_role("heading", name="Saved by enter")).to_be_visible()
+        expect(apage.get_by_role("button", name="Pin", exact=False)).to_have_count(0)
+        expect(apage.get_by_role("button", name="Edit title")).to_have_count(0)
+    finally:
+        ctx.close()
+        actx.close()

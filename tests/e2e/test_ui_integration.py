@@ -84,8 +84,8 @@ def test_attention_pagination_and_closed_attention_is_read_only(server, browser)
 
         # archive close from the thread page, then attention only with explicit opt-in
         page.goto(f"{server}/#/thread/{thread['id']}")
-        page.locator("summary", has_text="Close thread").click()
-        page.get_by_role("button", name="Close as archived").click()
+        page.get_by_role("button", name="Close thread").click()
+        page.get_by_role("menuitem", name="Close as archived").click()
         expect(page.get_by_text("Read-only: reopen")).to_be_visible()
         page.goto(f"{server}/#/attention")
         expect(page.get_by_text("Nothing here.")).to_be_visible()
@@ -141,8 +141,8 @@ def test_owner_pin_section_and_failed_actions_keep_ui_usable(server, browser):
     try:
         login(page, server, human)
         page.goto(f"{server}/#/thread/{thread['id']}")
-        page.get_by_role("button", name="Pin to top").click()
-        expect(page.get_by_role("button", name="Unpin")).to_be_visible()
+        page.get_by_role("button", name="Pin", exact=False).click()
+        expect(page.get_by_role("button", name="Pinned")).to_have_attribute("aria-pressed", "true")
         page.goto(f"{server}/#/area/{area['id']}")
         expect(page.get_by_role("heading", name="Pinned")).to_be_visible()
 

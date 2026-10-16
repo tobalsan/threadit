@@ -110,8 +110,8 @@ def test_full_flow(server, browser):
 
         # close completed
         alice.get_by_role("link", name="Open full thread at this message").click()
-        alice.get_by_text("Close thread").click()
-        alice.get_by_role("button", name="Close as completed").click()
+        alice.get_by_role("button", name="Close thread").click()
+        alice.get_by_role("menuitem", name="Close as completed").click()
         expect(alice.get_by_text("Read-only: reopen")).to_be_visible()
         expect(alice.get_by_role("button", name="Post")).to_be_disabled()
 
@@ -138,8 +138,8 @@ def test_full_flow(server, browser):
         # reopen
         alice.goto(server + "/#/thread/1")
         alice.get_by_role("button", name="Reopen thread").click()
-        expect(alice.get_by_role("button", name="Close thread")).to_have_count(0)
-        expect(alice.get_by_text("Close thread")).to_be_visible()
+        expect(alice.get_by_role("button", name="Close thread")).to_be_visible()
+        expect(alice.get_by_role("button", name="Reopen thread")).to_have_count(0)
 
         # activity
         alice.get_by_role("link", name="Activity").click()
