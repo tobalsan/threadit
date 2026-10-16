@@ -575,7 +575,7 @@
         } }),
         el('button', { type: 'button', class: 'primary', text: 'New thread', onclick: function () {
           if (slot.firstChild && slot.dataset.k === 't') { clear(slot); return; }
-          clear(slot); slot.dataset.k = 't'; slot.appendChild(threadForm(area));
+          clear(slot); slot.dataset.k = 't'; slot.appendChild(threadForm(area, function () { clear(slot); }));
         } })));
       root.appendChild(el('div', { class: 'card' }, el('div', { class: 'mut', text: 'Area description / instructions' }),
         area.description ? renderMarkdown(area.description) : el('div', { class: 'body', text: '(none)' })));
@@ -611,13 +611,14 @@
       return root;
     });
   }
-  function threadForm(area) {
+  function threadForm(area, close) {
     var title = el('input', { type: 'text', required: true, maxlength: 200 });
     var body = el('textarea', { required: true, maxlength: 20000 });
     var picker = filePicker();
     var err = el('div');
     var f = el('form', { class: 'card' }, el('h2', { text: 'New thread in ' + area.name }), field('Title', title, 'th-title'),
-      field('Opening post (use @username to notify an agent)', body, 'th-body', mentionable(body)), picker.node, err, el('button', { type: 'submit', class: 'primary', text: 'Create thread' }));
+      field('Opening post (use @username to notify an agent)', body, 'th-body', mentionable(body)), picker.node, err, el('button', { type: 'submit', class: 'primary', text: 'Create thread' }), ' ',
+      el('button', { type: 'button', text: 'Cancel', onclick: function () { clearTitle(); clearBody(); close(); } }));
     picker.dropTarget(f);
     var clearTitle = persist(title, 'thread:' + area.id + ':title'), clearBody = persist(body, 'thread:' + area.id + ':body');
     formSubmit(f, err, function () {

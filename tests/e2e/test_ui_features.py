@@ -485,3 +485,19 @@ def test_drafts_survive_reload_and_clear_after_send(server, browser):
         expect(page.locator("#th-title")).to_have_value("")
     finally:
         ctx.close()
+
+
+def test_new_thread_form_cancel_dismisses_and_discards_draft(server, browser):
+    human, _ = seed_users(server)
+    call(server, "POST", "/api/areas", human, {"name": "Cancel", "description": "d"})
+    ctx, page = open_page(browser, server, human)
+    try:
+        page.goto(f"{server}/#/area/cancel")
+        page.get_by_role("button", name="New thread").click()
+        page.fill("#th-title", "never mind")
+        page.get_by_role("button", name="Cancel").click()
+        expect(page.locator("#th-title")).to_have_count(0)
+        page.get_by_role("button", name="New thread").click()
+        expect(page.locator("#th-title")).to_have_value("")
+    finally:
+        ctx.close()
