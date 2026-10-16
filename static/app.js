@@ -818,7 +818,7 @@
     var items = Array.prototype.slice.call(popEl.querySelectorAll('button,input'));
     var i = items.indexOf(document.activeElement);
     var next = popEl.classList.contains('tapback') ? ['ArrowRight', 'ArrowLeft'] : ['ArrowDown', 'ArrowUp'];
-    if (ev.key === next[0] || ev.key === next[1]) {
+    if ((ev.key === next[0] || ev.key === next[1]) && document.activeElement.tagName !== 'INPUT') {
       if (!items.length) return;
       ev.preventDefault();
       items[(i + (ev.key === next[0] ? 1 : items.length - 1)) % items.length].focus();
@@ -854,7 +854,7 @@
   function renderMsgNode(node, ctx, depth, links) {
     var m = node.m;
     var wrap = el('div', { class: 'msg' + (depth === 0 ? ' top' : '') + (m.is_op ? ' op' : '') + (ctx.targetId === m.id ? ' target' : ''), id: 'm' + m.id });
-    var body = el('div', { class: 'msgbody' });
+    var body = el('div');
     var kids = el('div', { class: 'children' });
     var replySlot = el('div');
     var editing = false;
@@ -874,51 +874,68 @@
     }
     function paint() {
       var closed = ctx.closed || !!m.thread_closed_reason;
+      var attn = m.my_attention;
+      var pending = !!attn && attn.status === 'unacknowledged';
+      body.className = 'msgbody msgcard' + (pending ? ' pending' : '');
       clear(body);
       if (m.is_op) body.appendChild(el('div', { class: 'oplabel', text: 'Original post' }));
-      body.appendChild(el('div', { class: 'row' }, userTag(m.author),
-        m.is_op ? el('span', { class: 'badge closed', text: 'OP' }) : null,
-        el('span', { class: 'mut', text: fmt(m.created_at) }), modified(m),
-        m.my_attention ? el('span', { class: 'attn', title: 'reason: ' + m.my_attention.reason, text: 'attention: ' + m.my_attention.status }) : null,
-        links ? el('a', { href: ctxHref(m), text: 'context' }) : null));
-      body.appendChild(editing ? editForm() : renderMarkdown(m.body));
-      add(body, attachmentsNode(m));
-      var actions = el('div', { class: 'actions' });
+      var stepper = el('div', { class: 'vote h', role: 'group', 'aria-label': 'Vote' });
       DELTAS.forEach(function (d) {
-        actions.appendChild(el('button', { type: 'button', class: 'small', disabled: closed, 'aria-label': 'Vote ' + (d > 0 ? '+' : '') + d, text: (d > 0 ? '+' : '') + d, onclick: function (ev) {
+        stepper.appendChild(el('button', { type: 'button', disabled: closed, 'aria-label': 'Vote ' + (d > 0 ? '+' : '') + d, text: (d > 0 ? '+' : '') + d, onclick: function (ev) {
           act(ev.currentTarget, function () { return api('POST', '/api/messages/' + m.id + '/votes', { delta: d }).then(function (r) { m.score = r.score; paint(); if (m.is_op && ctx.onOpScore) ctx.onOpScore(r.score); }); });
         } }));
-        if (d === -1) actions.appendChild(el('span', { class: 'score', title: 'Message score', 'aria-label': 'score ' + m.score, text: String(m.score) }));
+        if (d === -1) stepper.appendChild(el('output', { class: 'score', title: 'Message score', 'aria-label': 'score ' + m.score, text: String(m.score) }));
       });
-      var reacts = el('div', { class: 'actions' });
+      body.appendChild(el('div', { class: 'head' },
+        el('span', { class: 'avatar' + (m.author.account_type === 'agent' ? ' agent' : ''), 'aria-hidden': 'true', text: m.author.username.charAt(0).toUpperCase() }),
+        who(m.author),
+        el('span', { title: fmt(m.created_at), text: ago(m.created_at) }), modified(m),
+        pending ? el('span', { class: 'need', title: 'reason: ' + attn.reason, text: 'Needs you' }) : null,
+        attn && !pending ? el('span', { class: 'mut', title: 'reason: ' + attn.reason, text: 'attention: ' + attn.status }) : null,
+        links ? el('a', { class: 'ctxlink', href: ctxHref(m), text: 'context' }) : null,
+        el('div', { class: 'vwrap' }, el('span', { class: 'vscore', 'aria-hidden': 'true', title: 'Score', text: String(m.score) }), stepper)));
+      body.appendChild(editing ? editForm() : renderMarkdown(m.body));
+      add(body, attachmentsNode(m));
+      var foot = el('div', { class: 'foot' });
+      var chips = el('div', { class: 'chips' });
       m.reactions.forEach(function (r) {
-        reacts.appendChild(el('button', { type: 'button', class: 'small chip' + (r.mine ? ' mine' : ''), 'aria-pressed': r.mine ? 'true' : 'false', disabled: closed,
+        chips.appendChild(el('button', { type: 'button', class: 'rx chip' + (r.mine ? ' mine' : ''), 'aria-pressed': r.mine ? 'true' : 'false', disabled: closed,
           title: r.users.join(', '), text: r.emoji + ' ' + r.count, onclick: function (ev) {
             act(ev.currentTarget, function () { return react(m, r.emoji, r.mine, paint); });
           } }));
       });
-      QUICK.forEach(function (e) {
-        if (m.reactions.some(function (r) { return r.emoji === e && r.mine; })) return;
-        reacts.appendChild(el('button', { type: 'button', class: 'small', disabled: closed, 'aria-label': 'React ' + e, text: e, onclick: function (ev) {
-          act(ev.currentTarget, function () { return react(m, e, false, paint); });
-        } }));
-      });
-      var custom = el('input', { type: 'text', maxlength: 32, size: 4, placeholder: '+emoji', 'aria-label': 'Custom emoji reaction', disabled: closed });
-      custom.addEventListener('keydown', function (ev) {
-        if (ev.key === 'Enter') { ev.preventDefault(); var v = custom.value.trim(); if (v) act(null, function () { return react(m, v, false, paint); }); }
-      });
-      reacts.appendChild(custom);
-      var rb = el('button', { type: 'button', class: 'small', disabled: closed, text: 'Reply', onclick: function () {
-        if (replySlot.firstChild) { clear(replySlot); return; }
-        replySlot.appendChild(replyForm(m, ctx, function (nm) {
-          clear(replySlot); ctx.added(nm);
-        }));
-      } });
-      body.appendChild(actions); body.appendChild(reacts); body.appendChild(rb);
-      if (me.id === m.author.id) {
-        body.appendChild(document.createTextNode(' '));
-        body.appendChild(el('button', { type: 'button', class: 'small', disabled: closed || editing, text: 'Edit', onclick: function () { editing = true; paint(); } }));
+      foot.appendChild(chips);
+      if (!closed) {
+        var hov = el('div', { class: 'hov' });
+        var reactBtn = el('button', { type: 'button', class: 'link reactbtn', 'aria-haspopup': 'menu', 'aria-expanded': 'false', text: '☺ React', onclick: function (ev) {
+          var btn = ev.currentTarget;
+          function pick(emoji, mine) {
+            closePop(false);
+            act(null, function () { return react(m, emoji, mine, paint); }).then(function () { var nb = body.querySelector('.reactbtn'); if (nb) nb.focus(); });
+          }
+          var custom = el('input', { type: 'text', maxlength: 32, size: 6, placeholder: '+emoji', 'aria-label': 'Custom emoji reaction' });
+          custom.addEventListener('keydown', function (e2) {
+            if (e2.key === 'Enter') { e2.preventDefault(); var v = custom.value.trim(); if (v) pick(v, m.reactions.some(function (r) { return r.emoji === v && r.mine; })); }
+          });
+          openPop(btn, el('div', { class: 'tapback', role: 'menu', 'aria-label': 'React' },
+            QUICK.map(function (e) {
+              var mine = m.reactions.some(function (r) { return r.emoji === e && r.mine; });
+              return el('button', { type: 'button', role: 'menuitem', class: mine ? 'on' : null, 'aria-label': 'React ' + e, text: e, onclick: function () { pick(e, mine); } });
+            }), custom));
+        } });
+        var rb = el('button', { type: 'button', class: 'link', 'aria-expanded': String(!!replySlot.firstChild), text: 'Reply', onclick: function (ev) {
+          var btn = ev.currentTarget;
+          if (replySlot.firstChild) { clear(replySlot); btn.setAttribute('aria-expanded', 'false'); return; }
+          var ex = el('div', { class: 'expand' }, el('div', null, replyForm(m, ctx, function (nm) { clear(replySlot); ctx.added(nm); })));
+          replySlot.appendChild(ex); btn.setAttribute('aria-expanded', 'true');
+          requestAnimationFrame(function () { requestAnimationFrame(function () { ex.classList.add('open'); }); });
+          ex.querySelector('textarea').focus();
+        } });
+        hov.appendChild(reactBtn); hov.appendChild(rb);
+        if (me.id === m.author.id) hov.appendChild(el('button', { type: 'button', class: 'link', disabled: editing, text: 'Edit', onclick: function () { editing = true; paint(); } }));
+        foot.appendChild(hov);
       }
+      body.appendChild(foot);
     }
     paint();
     node.kids.forEach(function (k) { kids.appendChild(renderMsgNode(k, ctx, depth + 1, links)); });
@@ -934,7 +951,7 @@
     var ta = el('textarea', { required: true, maxlength: 20000, 'aria-label': 'Reply to ' + parent.author.username });
     var picker = filePicker();
     var err = el('div');
-    var f = el('form', null, mentionable(ta), picker.node, err, el('button', { type: 'submit', class: 'primary small', text: 'Post reply' }));
+    var f = el('form', { class: 'replyform' }, mentionable(ta), picker.node, err, el('button', { type: 'submit', class: 'gbtn primary', text: 'Post reply' }));
     picker.dropTarget(f);
     var clearDraft = persist(ta, 'reply:' + parent.thread_id + ':' + parent.id);
     formSubmit(f, err, function () {

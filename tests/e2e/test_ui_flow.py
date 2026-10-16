@@ -76,15 +76,17 @@ def test_full_flow(server, browser):
 
         # bob sees attention, reacts processing, replies nested
         bob.get_by_role("link", name="Attention").click()
-        expect(bob.get_by_text("attention: unacknowledged")).to_be_visible()
-        bob.get_by_role("button", name="React 👀").click()
+        expect(bob.locator(".need")).to_have_text("Needs you")
+        bob.get_by_role("button", name="☺ React").click()
+        bob.get_by_role("menuitem", name="React 👀").click()
         expect(bob.get_by_text("attention: processing")).to_be_visible()
         bob.get_by_role("link", name="Pricing study").click()
         bob.get_by_role("button", name="Reply", exact=True).first.click()
         bob.get_by_label("Reply to alice").fill("Found three vendors")
         bob.get_by_role("button", name="Post reply").click()
         expect(bob.get_by_text("Found three vendors")).to_be_visible()
-        bob.get_by_role("button", name="React ✅").first.click()
+        bob.get_by_role("button", name="☺ React").first.click()
+        bob.get_by_role("menuitem", name="React ✅").click()
 
         # alice: agent message needs her attention; nested reply by alice acks
         alice.get_by_role("link", name="Attention").click()

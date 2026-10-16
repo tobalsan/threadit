@@ -93,8 +93,8 @@ def test_attention_pagination_and_closed_attention_is_read_only(server, browser)
         first = page.locator("main .card").first
         expect(first.locator(".badge.closed", has_text="closed: archived")).to_be_visible()
         expect(first.get_by_role("button", name="Vote +1", exact=True)).to_be_disabled()
-        expect(first.get_by_role("button", name="Reply")).to_be_disabled()
-        expect(first.get_by_role("button", name="React 👍")).to_be_disabled()
+        expect(first.get_by_role("button", name="Reply")).to_have_count(0)
+        expect(first.get_by_role("button", name="☺ React")).to_have_count(0)
         first.get_by_role("link", name="Reopen thread").click()
         expect(page.get_by_role("button", name="Reopen thread")).to_be_visible()
     finally:

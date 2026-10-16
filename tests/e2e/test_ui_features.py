@@ -256,7 +256,7 @@ def test_editing_and_modified_indicator(server, browser):
         # closed thread: edit buttons disabled
         call(server, "POST", f"/api/threads/{thread['id']}/close", human, {"reason": "completed"})
         page.goto(f"{server}/#/thread/{thread['id']}")
-        expect(page.get_by_role("button", name="Edit", exact=True).first).to_be_disabled()
+        expect(page.get_by_role("button", name="Edit", exact=True)).to_have_count(0)
         expect(page.get_by_role("button", name="Edit title")).to_have_count(0)
         assert other["author"]["username"] == "agentx"
     finally:
@@ -271,8 +271,8 @@ def test_symmetric_vote_buttons(server, browser):
     ctx, page = open_page(browser, server, human)
     try:
         page.goto(f"{server}/#/thread/{thread['id']}")
-        actions = page.locator(".msgbody .actions").first
-        labels = actions.locator("button").all_inner_texts()
+        stepper = page.locator(".msgbody .vote").first
+        labels = stepper.locator("button").all_inner_texts()
         assert labels == ["-5", "-1", "+1", "+5"]
         page.get_by_role("button", name="Vote -5", exact=True).first.click()
         expect(page.get_by_label("score -5").first).to_be_visible()
@@ -825,3 +825,69 @@ def test_thread_header_pin_toggle_and_close_popover(server, browser):
     finally:
         ctx.close()
         actx.close()
+
+
+def test_message_card_head_stepper_react_popover_and_reply(server, browser):
+    human, agent = seed_users(server)
+    area = call(server, "POST", "/api/areas", human, {"name": "Cardy", "description": "d"})
+    thread = make_thread(server, human, area["id"], "Card thread", "op body")
+    call(server, "POST", f"/api/threads/{thread['id']}/messages", agent, {"body": "ping @hanna"})
+    ctx, page = open_page(browser, server, human)
+    try:
+        page.goto(f"{server}/#/thread/{thread['id']}")
+        agent_card = page.locator(".msgbody").filter(has_text="ping @hanna")
+        expect(agent_card.locator(".avatar.agent")).to_be_visible()
+        expect(agent_card.locator(".who .ag")).to_be_visible()
+        expect(agent_card.locator(".need")).to_have_text("Needs you")
+        expect(agent_card).to_have_class(re.compile(r"\bpending\b"))
+        op = page.locator(".msg.op .msgbody")
+        expect(op.locator(".avatar:not(.agent)")).to_be_visible()
+
+        # the score pill sits top right and turns into the stepper on hover
+        pill = op.locator(".vscore")
+        stepper = op.locator(".vote")
+        expect(pill).to_be_visible()
+        page.mouse.move(0, 0)
+        expect(stepper).to_have_css("opacity", "0")
+        card_box = op.bounding_box()
+        pill_box = pill.bounding_box()
+        assert card_box["x"] + card_box["width"] - (pill_box["x"] + pill_box["width"]) < 20
+        assert pill_box["y"] - card_box["y"] < 40
+        op.hover()
+        expect(stepper).to_have_css("opacity", "1")
+        op.get_by_role("button", name="Vote +5").click()
+        expect(op.get_by_label("score 5")).to_be_attached()
+
+        # hover actions also show on keyboard focus
+        reply_btn = op.get_by_role("button", name="Reply", exact=True)
+        page.mouse.move(0, 0)
+        expect(op.locator(".hov")).to_have_css("opacity", "0")
+        reply_btn.focus()
+        expect(op.locator(".hov")).to_have_css("opacity", "1")
+
+        # react popover: Esc closes it and returns focus, a pick adds a chip
+        react = op.get_by_role("button", name="☺ React")
+        react.click()
+        expect(page.get_by_role("menuitem", name="React 🎉")).to_be_visible()
+        page.keyboard.press("Escape")
+        expect(page.get_by_role("menu")).to_have_count(0)
+        expect(react).to_be_focused()
+        react.click()
+        page.get_by_role("menuitem", name="React 🎉").click()
+        expect(op.get_by_role("button", name="🎉 1")).to_have_attribute("aria-pressed", "true")
+        react = op.get_by_role("button", name="☺ React")
+        react.click()
+        page.get_by_label("Custom emoji reaction").fill("🔥")
+        page.get_by_label("Custom emoji reaction").press("Enter")
+        expect(op.get_by_role("button", name="🔥 1")).to_be_visible()
+        op.get_by_role("button", name="🎉 1").click()
+        expect(op.get_by_role("button", name="🎉 1")).to_have_count(0)
+
+        # inline reply composer expands under the card
+        agent_card.hover()
+        agent_card.get_by_role("button", name="Reply", exact=True).click()
+        page.get_by_label("Reply to agentx").fill("nested answer")
+        page.get_by_role("button", name="Post reply").click()
+        expect(page.locator(".children .msgbody").filter(has_text="nested answer")).to_be_visible()
+    finally:
+        ctx.close()
