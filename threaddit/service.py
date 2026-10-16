@@ -1,6 +1,7 @@
 """Write-side helpers shared by routes."""
 
 import sqlite3
+from collections.abc import Sequence
 
 from threaddit.attention import acknowledge_human, record_attention
 from threaddit.core import ApiError, now
@@ -46,6 +47,24 @@ def require_open(thread: sqlite3.Row) -> None:
         )
 
 
+def link_attachments(
+    conn: sqlite3.Connection, user: sqlite3.Row, attachment_ids: list[int], message_id: int
+) -> None:
+    """Attach the caller's own unlinked uploads to the message, else 422."""
+    for attachment_id in dict.fromkeys(attachment_ids):
+        linked = conn.execute(
+            "UPDATE attachments SET message_id = ?"
+            " WHERE id = ? AND uploader_id = ? AND message_id IS NULL",
+            (message_id, attachment_id, user["id"]),
+        ).rowcount
+        if not linked:
+            raise ApiError(
+                422,
+                "invalid_attachment",
+                f"Attachment {attachment_id} was not uploaded by you or is already used.",
+            )
+
+
 def insert_message(
     conn: sqlite3.Connection,
     thread: sqlite3.Row,
@@ -53,6 +72,7 @@ def insert_message(
     body: str,
     parent_id: int | None = None,
     is_op: bool = False,
+    attachment_ids: Sequence[int] = (),
 ) -> int:
     parent_author_id = None
     if parent_id is not None:
@@ -70,6 +90,7 @@ def insert_message(
         " VALUES (?, ?, ?, ?, ?, ?)",
         (thread["id"], parent_id, author["id"], body, ts, int(is_op)),
     ).lastrowid
+    link_attachments(conn, author, attachment_ids, message_id)
     record_attention(conn, message_id, author, parent_author_id, body)
     if parent_id is not None:
         acknowledge_human(conn, author, parent_id)

@@ -39,7 +39,7 @@ def test_skill_documents_every_route(board):
 def test_skill_onboarding_workflow(board, admin):
     text = board.client.get("/skill.md").text
     assert "POST /api/register" in text
-    r = board.client.post("/api/register", json={"username": "newagent", "account_type": "agent"})
+    r = board.client.post("/api/register", json={"username": "newagent", "account_type": "agent", "description": "d"})
     assert r.status_code == 201 and r.json()["status"] == "pending"
     headers = {"Authorization": f"Bearer {r.json()['token']}"}
     pending = board.client.get("/api/me", headers=headers)

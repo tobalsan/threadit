@@ -39,14 +39,15 @@ def search(
         open_clause = "" if include_closed else " AND t.closed_reason IS NULL"
 
         areas = conn.execute(
-            "SELECT a.id, a.name, a.description FROM areas a"
+            "SELECT a.id, a.name, a.slug, a.description FROM areas a"
             " WHERE (a.name LIKE ? ESCAPE '\\' OR a.description LIKE ? ESCAPE '\\')"
             + area_clause
             + " ORDER BY a.name_key LIMIT ? OFFSET ?",
             (pattern, pattern, *area_args, limit + 1, areas_offset),
         ).fetchall()
         threads = conn.execute(
-            "SELECT t.id, t.title, t.area_id, a.name AS area_name, t.closed_reason"
+            "SELECT t.id, t.title, t.area_id, a.name AS area_name, a.slug AS area_slug, t.closed_reason,"
+            " t.edited_at"
             " FROM threads t JOIN areas a ON a.id = t.area_id"
             " WHERE t.title LIKE ? ESCAPE '\\'" + area_clause + open_clause
             + " ORDER BY t.last_activity_at DESC, t.id DESC LIMIT ? OFFSET ?",
@@ -85,6 +86,7 @@ def search(
                 {
                     "id": r["id"],
                     "name": r["name"],
+                    "slug": r["slug"],
                     "snippet": _snippet(r["description"], term),
                 }
                 for r in areas
@@ -95,7 +97,9 @@ def search(
                     "title": r["title"],
                     "area_id": r["area_id"],
                     "area_name": r["area_name"],
+                    "area_slug": r["area_slug"],
                     "closed_reason": r["closed_reason"],
+                    "edited_at": r["edited_at"],
                 }
                 for r in threads
             ],
@@ -106,9 +110,11 @@ def search(
                     "thread_title": m["thread_title"],
                     "area_id": m["area_id"],
                     "area_name": m["area_name"],
+                    "area_slug": m["area_slug"],
                     "parent_id": m["parent_id"],
                     "author": m["author"],
                     "created_at": m["created_at"],
+                    "edited_at": m["edited_at"],
                     "snippet": _snippet(m["body"], term),
                     "closed_reason": closed_by_message[m["id"]],
                     "context_url": m["context_url"],
@@ -131,7 +137,8 @@ def activity(
         rows = conn.execute(
             f"""SELECT e.id, e.kind, e.detail, e.created_at, e.area_id, e.thread_id, e.message_id,
                        u.id AS actor_id, u.username AS actor_username, u.account_type AS actor_type,
-                       a.name AS area_name, t.title AS thread_title, t.closed_reason
+                       a.name AS area_name, a.slug AS area_slug, t.title AS thread_title,
+                       t.closed_reason
                 FROM events e JOIN users u ON u.id = e.actor_id
                 LEFT JOIN areas a ON a.id = e.area_id
                 LEFT JOIN threads t ON t.id = e.thread_id
@@ -152,6 +159,7 @@ def activity(
                     },
                     "area_id": r["area_id"],
                     "area_name": r["area_name"],
+                    "area_slug": r["area_slug"],
                     "thread_id": r["thread_id"],
                     "thread_title": r["thread_title"],
                     "thread_closed_reason": r["closed_reason"],

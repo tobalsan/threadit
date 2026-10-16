@@ -2,6 +2,8 @@ import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 
+from threaddit.slugs import unique_area_slug
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -11,7 +13,8 @@ CREATE TABLE IF NOT EXISTS users (
     status TEXT NOT NULL CHECK (status IN ('pending', 'approved')),
     is_superadmin INTEGER NOT NULL DEFAULT 0,
     token_hash TEXT NOT NULL UNIQUE,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT ''
 );
 CREATE UNIQUE INDEX IF NOT EXISTS one_superadmin ON users (is_superadmin) WHERE is_superadmin = 1;
 
@@ -22,7 +25,8 @@ CREATE TABLE IF NOT EXISTS areas (
     description TEXT NOT NULL DEFAULT '',
     created_by INTEGER NOT NULL REFERENCES users (id),
     created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    updated_at TEXT NOT NULL,
+    slug TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS threads (
@@ -35,7 +39,8 @@ CREATE TABLE IF NOT EXISTS threads (
     pinned INTEGER NOT NULL DEFAULT 0,
     closed_reason TEXT CHECK (closed_reason IN ('completed', 'archived')),
     closed_at TEXT,
-    closed_by INTEGER REFERENCES users (id)
+    closed_by INTEGER REFERENCES users (id),
+    edited_at TEXT
 );
 CREATE INDEX IF NOT EXISTS threads_area ON threads (area_id);
 
@@ -47,7 +52,8 @@ CREATE TABLE IF NOT EXISTS messages (
     body TEXT NOT NULL,
     created_at TEXT NOT NULL,
     is_op INTEGER NOT NULL DEFAULT 0,
-    score INTEGER NOT NULL DEFAULT 0
+    score INTEGER NOT NULL DEFAULT 0,
+    edited_at TEXT
 );
 CREATE INDEX IF NOT EXISTS messages_thread ON messages (thread_id);
 CREATE INDEX IF NOT EXISTS messages_parent ON messages (parent_id);
@@ -89,7 +95,41 @@ CREATE TABLE IF NOT EXISTS events (
     detail TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS attachments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    uploader_id INTEGER NOT NULL REFERENCES users (id),
+    message_id INTEGER REFERENCES messages (id),
+    filename TEXT NOT NULL,
+    content_type TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    data BLOB NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS attachments_message ON attachments (message_id);
 """
+
+# Columns added after the first release: (table, column, definition).
+ADDED_COLUMNS = [
+    ("users", "description", "TEXT NOT NULL DEFAULT ''"),
+    ("areas", "slug", "TEXT NOT NULL DEFAULT ''"),
+    ("threads", "edited_at", "TEXT"),
+    ("messages", "edited_at", "TEXT"),
+]
+
+
+def migrate(conn: sqlite3.Connection) -> None:
+    """Bring a database created by an older schema up to date."""
+    for table, column, definition in ADDED_COLUMNS:
+        have = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+        if column not in have:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+    for row in conn.execute("SELECT id, name FROM areas WHERE slug = '' ORDER BY id").fetchall():
+        conn.execute(
+            "UPDATE areas SET slug = ? WHERE id = ?",
+            (unique_area_slug(conn, row["name"], row["id"]), row["id"]),
+        )
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS areas_slug ON areas (slug)")
 
 
 class Database:
@@ -102,6 +142,7 @@ class Database:
         try:
             conn.execute("PRAGMA journal_mode=WAL")
             conn.executescript(SCHEMA)
+            migrate(conn)
         finally:
             conn.close()
 

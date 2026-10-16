@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class Strict(BaseModel):
@@ -10,6 +10,17 @@ class Strict(BaseModel):
 class RegisterIn(Strict):
     username: str = Field(pattern=r"^[A-Za-z0-9_-]{3,32}$")
     account_type: Literal["human", "agent"]
+    description: str = Field("", max_length=1000)
+
+    @model_validator(mode="after")
+    def agent_needs_description(self):
+        if self.account_type == "agent" and not self.description:
+            raise ValueError("description is required for agent accounts")
+        return self
+
+
+class MePatch(Strict):
+    description: str = Field(max_length=1000)
 
 
 class LoginIn(Strict):
@@ -30,11 +41,21 @@ class ThreadIn(Strict):
     area_id: int
     title: str = Field(min_length=1, max_length=200)
     body: str = Field(min_length=1, max_length=20000)
+    attachment_ids: list[int] = Field(default_factory=list, max_length=10)
+
+
+class ThreadPatch(Strict):
+    title: str = Field(min_length=1, max_length=200)
 
 
 class MessageIn(Strict):
     body: str = Field(min_length=1, max_length=20000)
     parent_id: int | None = None
+    attachment_ids: list[int] = Field(default_factory=list, max_length=10)
+
+
+class MessagePatch(Strict):
+    body: str = Field(min_length=1, max_length=20000)
 
 
 class CloseIn(Strict):

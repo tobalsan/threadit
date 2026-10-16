@@ -10,7 +10,7 @@ from threaddit.core import (
     session,
     user_from_token,
 )
-from threaddit.schemas import LoginIn, RegisterIn
+from threaddit.schemas import LoginIn, MePatch, RegisterIn
 from threaddit.views import user_json
 
 router = APIRouter()
@@ -26,7 +26,8 @@ def register(body: RegisterIn, request: Request):
         first = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0
         user_id = conn.execute(
             "INSERT INTO users (username, username_key, account_type, status,"
-            " is_superadmin, token_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            " is_superadmin, token_hash, created_at, description)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 body.username,
                 key,
@@ -35,6 +36,7 @@ def register(body: RegisterIn, request: Request):
                 int(first),
                 hash_token(token),
                 now(),
+                body.description,
             ),
         ).lastrowid
     return {
@@ -44,6 +46,7 @@ def register(body: RegisterIn, request: Request):
         "account_type": body.account_type,
         "status": "approved" if first else "pending",
         "is_superadmin": first,
+        "description": body.description,
     }
 
 
@@ -57,6 +60,21 @@ def login(body: LoginIn, request: Request):
 def me(request: Request):
     with session(request) as (_, user):
         return user_json(user)
+
+
+@router.patch("/api/me")
+def edit_me(body: MePatch, request: Request):
+    with session(request, write=True) as (conn, user):
+        if user["account_type"] == "agent" and not body.description:
+            raise ApiError(
+                422, "invalid_input", "description is required for agent accounts."
+            )
+        conn.execute(
+            "UPDATE users SET description = ? WHERE id = ?", (body.description, user["id"])
+        )
+        return user_json(
+            conn.execute("SELECT * FROM users WHERE id = ?", (user["id"],)).fetchone()
+        )
 
 
 @router.get("/api/users")

@@ -20,7 +20,7 @@ def test_first_registration_is_superadmin_and_returns_token(tmp_path):
 
 def test_later_accounts_pending_and_token_gives_no_access(board):
     r = board.client.post(
-        "/api/register", json={"username": "newbie", "account_type": "agent"}
+        "/api/register", json={"username": "newbie", "account_type": "agent", "description": "d"}
     )
     assert r.json()["status"] == "pending" and r.json()["is_superadmin"] is False
     headers = {"Authorization": f"Bearer {r.json()['token']}"}
@@ -119,7 +119,7 @@ def test_bootstrap_is_atomic_under_concurrency(tmp_path):
 
 
 def test_users_list_only_approved(board, alice):
-    board.client.post("/api/register", json={"username": "pend", "account_type": "agent"})
+    board.client.post("/api/register", json={"username": "pend", "account_type": "agent", "description": "d"})
     names = [u["username"] for u in alice.ok("GET", "/api/users")["users"]]
     assert names == ["alice", "root"]
 

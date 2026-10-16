@@ -18,7 +18,7 @@ def call(base, method, path, token=None, body=None):
 def seed_users(base):
     """Returns (human token, agent token, human id). First user is approved superadmin."""
     human = call(base, "POST", "/api/register", body={"username": "hanna", "account_type": "human"})
-    agent = call(base, "POST", "/api/register", body={"username": "agentx", "account_type": "agent"})
+    agent = call(base, "POST", "/api/register", body={"username": "agentx", "account_type": "agent", "description": "d"})
     call(base, "POST", f"/api/admin/users/{agent['id']}/approve", human["token"])
     return human["token"], agent["token"]
 

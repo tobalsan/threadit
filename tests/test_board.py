@@ -309,7 +309,7 @@ def test_persistence_across_restart(board, admin, alice, area):
     tid = d["thread"]["id"]
     alice.say(tid, "second")
     admin.ok("POST", f"/api/threads/{tid}/close", {"reason": "archived"})
-    token_user = board.client.post("/api/register", json={"username": "pending1", "account_type": "agent"}).json()
+    token_user = board.client.post("/api/register", json={"username": "pending1", "account_type": "agent", "description": "d"}).json()
     board.restart()
     board.actor_for(admin)
     board.actor_for(alice)

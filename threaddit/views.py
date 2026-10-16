@@ -1,13 +1,14 @@
 """Read queries and JSON shaping for users, areas, threads and messages."""
 
+import re
 import sqlite3
 
 from threaddit.core import ApiError
 
 _MESSAGE_SQL = """
-SELECT m.id, m.thread_id, m.parent_id, m.is_op, m.body, m.created_at, m.score,
+SELECT m.id, m.thread_id, m.parent_id, m.is_op, m.body, m.created_at, m.score, m.edited_at,
        u.id AS author_id, u.username AS author_username, u.account_type AS author_type,
-       t.title AS thread_title, t.area_id AS area_id, ar.name AS area_name,
+       t.title AS thread_title, t.area_id AS area_id, ar.name AS area_name, ar.slug AS area_slug,
        att.status AS att_status, att.reason AS att_reason,
        t.closed_reason AS thread_closed_reason
 FROM messages m
@@ -18,7 +19,8 @@ LEFT JOIN attention att ON att.message_id = m.id AND att.user_id = ?
 """
 
 _THREAD_SQL = """
-SELECT t.id, t.area_id, ar.name AS area_name, t.title, t.created_at,
+SELECT t.id, t.area_id, ar.name AS area_name, ar.slug AS area_slug, t.title,
+       t.created_at, t.edited_at,
        t.last_activity_at, t.pinned, t.closed_reason, t.closed_at,
        cb.username AS closed_by,
        o.id AS owner_id, o.username AS owner_username, o.account_type AS owner_type,
@@ -50,6 +52,17 @@ def user_json(row: sqlite3.Row) -> dict:
         "status": row["status"],
         "is_superadmin": bool(row["is_superadmin"]),
         "created_at": row["created_at"],
+        "description": row["description"],
+    }
+
+
+def attachment_json(row: sqlite3.Row) -> dict:
+    return {
+        "id": row["id"],
+        "filename": row["filename"],
+        "content_type": row["content_type"],
+        "size": row["size"],
+        "url": f"/api/attachments/{row['id']}",
     }
 
 
@@ -57,6 +70,7 @@ def area_json(row: sqlite3.Row) -> dict:
     return {
         "id": row["id"],
         "name": row["name"],
+        "slug": row["slug"],
         "description": row["description"],
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
@@ -84,10 +98,14 @@ def list_areas(conn: sqlite3.Connection) -> list[dict]:
     ]
 
 
-def get_area(conn: sqlite3.Connection, area_id: int) -> sqlite3.Row:
-    row = conn.execute("SELECT * FROM areas WHERE id = ?", (area_id,)).fetchone()
+def get_area(conn: sqlite3.Connection, area_ref: int | str) -> sqlite3.Row:
+    """Area by numeric id, or by slug when `area_ref` is not an integer."""
+    if isinstance(area_ref, str) and not re.fullmatch(r"[0-9]+", area_ref):
+        row = conn.execute("SELECT * FROM areas WHERE slug = ?", (area_ref,)).fetchone()
+    else:
+        row = conn.execute("SELECT * FROM areas WHERE id = ?", (int(area_ref),)).fetchone()
     if row is None:
-        raise ApiError(404, "area_not_found", f"Area {area_id} does not exist.")
+        raise ApiError(404, "area_not_found", f"Area {area_ref} does not exist.")
     return row
 
 
@@ -103,6 +121,7 @@ def thread_json(row: sqlite3.Row) -> dict:
         "id": row["id"],
         "area_id": row["area_id"],
         "area_name": row["area_name"],
+        "area_slug": row["area_slug"],
         "title": row["title"],
         "owner": {
             "id": row["owner_id"],
@@ -110,6 +129,7 @@ def thread_json(row: sqlite3.Row) -> dict:
             "account_type": row["owner_type"],
         },
         "created_at": row["created_at"],
+        "edited_at": row["edited_at"],
         "last_activity_at": row["last_activity_at"],
         "pinned": bool(row["pinned"]),
         "closed": closed,
@@ -175,6 +195,16 @@ def fetch_messages(
             )
             entry["users"].append(r["username"])
             entry["mine"] = entry["mine"] or r["user_id"] == viewer_id
+    attachments: dict[int, list[dict]] = {}
+    for start in range(0, len(ids), 500):
+        chunk = ids[start : start + 500]
+        marks = ",".join("?" * len(chunk))
+        for a in conn.execute(
+            "SELECT id, message_id, filename, content_type, size FROM attachments"
+            f" WHERE message_id IN ({marks}) ORDER BY id",
+            chunk,
+        ):
+            attachments.setdefault(a["message_id"], []).append(attachment_json(a))
     out = []
     for r in rows:
         mine = None
@@ -190,6 +220,7 @@ def fetch_messages(
                 "thread_title": r["thread_title"],
                 "area_id": r["area_id"],
                 "area_name": r["area_name"],
+                "area_slug": r["area_slug"],
                 "parent_id": r["parent_id"],
                 "is_op": bool(r["is_op"]),
                 "author": {
@@ -199,6 +230,8 @@ def fetch_messages(
                 },
                 "body": r["body"],
                 "created_at": r["created_at"],
+                "edited_at": r["edited_at"],
+                "attachments": attachments.get(r["id"], []),
                 "score": r["score"],
                 "reactions": grouped,
                 "my_attention": mine,

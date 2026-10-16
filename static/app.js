@@ -4,7 +4,11 @@
   var PAGE = 100;
   var SEARCH_PAGE = 50;
   var TOKEN_KEY = 'threaddit_token';
-  var DELTAS = [-1, 1, 5, 10, 100];
+  var UPLOAD_TIMEOUT_MS = 120000;
+  var MAX_ATTACHMENTS = 10;
+  var MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+  var INLINE_IMAGES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+  var DELTAS = [-100, -10, -5, -1, 1, 5, 10, 100];
   var QUICK = ['👀', '✅', '👍', '❤️', '🎉'];
   var main = document.getElementById('main');
   var me = null;
@@ -36,15 +40,18 @@
   function ApiError(status, code, message) { this.status = status; this.code = code; this.message = message; }
   ApiError.prototype = Object.create(Error.prototype);
 
-  function api(method, path, body, tokenOverride) {
+  // raw: {blob, type} sends a file as the raw request body instead of JSON.
+  function api(method, path, body, tokenOverride, raw) {
     var ctl = new AbortController();
-    var timer = setTimeout(function () { ctl.abort(); }, TIMEOUT_MS);
+    var timeoutMs = raw ? UPLOAD_TIMEOUT_MS : TIMEOUT_MS;
+    var timer = setTimeout(function () { ctl.abort(); }, timeoutMs);
     var headers = {};
     var tok = tokenOverride || getToken();
     if (tok) headers['Authorization'] = 'Bearer ' + tok;
-    if (body !== undefined) headers['Content-Type'] = 'application/json';
+    if (raw) headers['Content-Type'] = raw.type;
+    else if (body !== undefined) headers['Content-Type'] = 'application/json';
     return fetch(path, { method: method, headers: headers, signal: ctl.signal,
-      body: body === undefined ? undefined : JSON.stringify(body) })
+      body: raw ? raw.blob : body === undefined ? undefined : JSON.stringify(body) })
       .then(function (r) {
         return r.text().then(function (t) {
           var data = null;
@@ -58,7 +65,7 @@
       })
       .catch(function (e) {
         if (e instanceof ApiError) throw e;
-        if (e && e.name === 'AbortError') throw new ApiError(0, 'timeout', 'Request timed out after ' + TIMEOUT_MS / 1000 + 's. Check connection and retry.');
+        if (e && e.name === 'AbortError') throw new ApiError(0, 'timeout', 'Request timed out after ' + timeoutMs / 1000 + 's. Check connection and retry.');
         throw new ApiError(0, 'network', 'Network error. Check connection and retry.');
       })
       .finally(function () { clearTimeout(timer); });
@@ -100,11 +107,253 @@
         .finally(function () { if (btn) btn.disabled = false; });
     });
   }
-  function field(label, input, id) {
+  // holder: node shown in place of the input (e.g. a wrapper around it).
+  function field(label, input, id, holder) {
     input.id = id;
-    return el('div', { class: 'field' }, el('label', { for: id, text: label }), input);
+    return el('div', { class: 'field' }, el('label', { for: id, text: label }), holder || input);
   }
   function ctxHref(m) { return '#/context/' + m.id; }
+  function areaRef(o) { return o.area_slug || o.slug || o.area_id || o.id; }
+  function modified(o) {
+    return o.edited_at ? el('span', { class: 'mut modified', title: 'Edited ' + fmt(o.edited_at), text: '(modified)' }) : null;
+  }
+  function fmtSize(n) { return n < 1024 ? n + ' B' : n < 1048576 ? Math.round(n / 102.4) / 10 + ' KB' : Math.round(n / 104857.6) / 10 + ' MB'; }
+
+  // ---------- markdown (safe subset: builds DOM nodes, never parses HTML) ----------
+  var INLINE_RE = /`([^`\n]+)`|\[([^\]\n]+)\]\(([^)\s]+)\)|\*\*(.+?)\*\*|\b__(.+?)__\b|\*([^*\s](?:[^*]*[^*\s])?)\*|\b_([^_\s](?:[^_]*[^_\s])?)_\b/;
+  var BLOCK_START = /^(```|#{1,6}\s|\s*>|\s*[-*+]\s+|\s*\d+[.)]\s+)/;
+  function safeHref(u) {
+    if (/[\u0000-\u0020\u007f\\]/.test(u)) return null;
+    if (/^(https?:\/\/|mailto:)/i.test(u) || /^(\/(?!\/)|#|\.\.?\/)/.test(u)) return u;
+    return null;
+  }
+  function mdInline(text, parent, opts, depth) {
+    var rest = text;
+    while (rest) {
+      var m = INLINE_RE.exec(rest);
+      if (!m) { parent.appendChild(document.createTextNode(rest)); return; }
+      if (m.index) parent.appendChild(document.createTextNode(rest.slice(0, m.index)));
+      rest = rest.slice(m.index + m[0].length);
+      if (m[1] !== undefined) {
+        parent.appendChild(el('code', { text: m[1] }));
+      } else if (m[2] !== undefined) {
+        var href = opts.noLinks ? null : safeHref(m[3]);
+        if (href) parent.appendChild(el('a', { href: href, rel: 'noopener noreferrer', target: /^https?:/i.test(href) ? '_blank' : null, text: m[2] }));
+        else parent.appendChild(document.createTextNode(opts.noLinks ? m[2] : m[0]));
+      } else {
+        var strong = m[4] !== undefined || m[5] !== undefined;
+        var inner = strong ? (m[4] !== undefined ? m[4] : m[5]) : (m[6] !== undefined ? m[6] : m[7]);
+        var node = el(strong ? 'strong' : 'em');
+        if (depth < 4) mdInline(inner, node, opts, depth + 1); else node.textContent = inner;
+        parent.appendChild(node);
+      }
+    }
+  }
+  function mdBlocks(lines, parent, depth) {
+    var i = 0, m;
+    while (i < lines.length) {
+      var line = lines[i];
+      if (!line.trim()) { i++; continue; }
+      if (/^```/.test(line)) {
+        var code = []; i++;
+        while (i < lines.length && !/^```\s*$/.test(lines[i])) code.push(lines[i++]);
+        i++;
+        parent.appendChild(el('pre', null, el('code', { text: code.join('\n') })));
+      } else if ((m = /^(#{1,6})\s+(.*)$/.exec(line))) {
+        var h = el('h' + Math.min(m[1].length + 2, 6), { class: 'mdh' });
+        mdInline(m[2], h, {}, 0); parent.appendChild(h); i++;
+      } else if (/^\s*>/.test(line)) {
+        var quoted = [];
+        while (i < lines.length && /^\s*>/.test(lines[i])) quoted.push(lines[i++].replace(/^\s*> ?/, ''));
+        var bq = el('blockquote');
+        if (depth < 4) mdBlocks(quoted, bq, depth + 1); else bq.textContent = quoted.join('\n');
+        parent.appendChild(bq);
+      } else if (/^\s*[-*+]\s+/.test(line) || /^\s*\d+[.)]\s+/.test(line)) {
+        var ordered = /^\s*\d+[.)]\s+/.test(line);
+        var itemRe = ordered ? /^\s*\d+[.)]\s+/ : /^\s*[-*+]\s+/;
+        var list = el(ordered ? 'ol' : 'ul');
+        while (i < lines.length && itemRe.test(lines[i])) {
+          var li = el('li'); mdInline(lines[i].replace(itemRe, ''), li, {}, 0); list.appendChild(li); i++;
+        }
+        parent.appendChild(list);
+      } else {
+        var p = el('p');
+        var first = true;
+        while (i < lines.length && lines[i].trim() && (first || !BLOCK_START.test(lines[i]))) {
+          if (!first) p.appendChild(el('br'));
+          mdInline(lines[i], p, {}, 0); first = false; i++;
+        }
+        parent.appendChild(p);
+      }
+    }
+  }
+  function renderMarkdown(text) {
+    var root = el('div', { class: 'md body' });
+    mdBlocks(String(text).replace(/\r\n?/g, '\n').split('\n'), root, 0);
+    return root;
+  }
+  // Inline markdown only (thread titles). noLinks when the title already sits inside a link.
+  function renderInline(text, noLinks) {
+    var span = el('span', { class: 'md-inline' });
+    mdInline(String(text), span, { noLinks: noLinks }, 0);
+    return span;
+  }
+
+  // ---------- attachments ----------
+  var blobCache = {};
+  function releaseBlobs() {
+    Object.keys(blobCache).forEach(function (k) { blobCache[k].then(function (u) { URL.revokeObjectURL(u); }, function () {}); });
+    blobCache = {};
+    closeLightbox();
+  }
+  // <img> and <a> cannot send the bearer header, so fetch the file and use an object URL.
+  function attachmentUrl(a) {
+    if (!blobCache[a.id]) {
+      blobCache[a.id] = fetch(a.url, { headers: { Authorization: 'Bearer ' + getToken() } }).then(function (r) {
+        if (!r.ok) throw new ApiError(r.status, 'http_' + r.status, 'Could not load ' + a.filename);
+        return r.blob();
+      }).then(function (b) { return URL.createObjectURL(b); });
+      blobCache[a.id].catch(function () { delete blobCache[a.id]; });
+    }
+    return blobCache[a.id];
+  }
+  var lightboxOpener = null;
+  function closeLightbox() {
+    var box = document.getElementById('lightbox');
+    if (box) box.remove();
+    document.removeEventListener('keydown', lightboxKey);
+    if (lightboxOpener && document.contains(lightboxOpener)) lightboxOpener.focus();
+    lightboxOpener = null;
+  }
+  function lightboxKey(ev) { if (ev.key === 'Escape') closeLightbox(); }
+  function openLightbox(url, filename, opener) {
+    closeLightbox();
+    lightboxOpener = opener;
+    var box = el('div', { id: 'lightbox', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Image preview: ' + filename, tabindex: '-1', onclick: closeLightbox },
+      el('img', { src: url, alt: filename }));
+    document.body.appendChild(box);
+    document.addEventListener('keydown', lightboxKey);
+    box.focus();
+  }
+  function attachmentsNode(m) {
+    if (!m.attachments || !m.attachments.length) return null;
+    var box = el('div', { class: 'attachments' });
+    m.attachments.forEach(function (a) {
+      if (INLINE_IMAGES.indexOf(a.content_type) >= 0) {
+        var img = el('img', { class: 'thumb', alt: a.filename });
+        var btn = el('button', { type: 'button', class: 'thumbbtn', 'aria-label': 'Open image ' + a.filename, title: a.filename }, img);
+        attachmentUrl(a).then(function (u) {
+          img.src = u;
+          btn.addEventListener('click', function () { openLightbox(u, a.filename, btn); });
+        }).catch(function () { btn.textContent = a.filename + ' (failed to load)'; });
+        box.appendChild(btn);
+      } else {
+        box.appendChild(el('a', { class: 'attfile', href: a.url, download: a.filename, text: a.filename + ' (' + fmtSize(a.size) + ')', onclick: function (ev) {
+          ev.preventDefault();
+          attachmentUrl(a).then(function (u) {
+            var dl = el('a', { href: u, download: a.filename }); document.body.appendChild(dl); dl.click(); dl.remove();
+          }).catch(function (e) { toast(e.message, true); });
+        } }));
+      }
+    });
+    return box;
+  }
+  // File input for thread/message forms: upload() sends not-yet-uploaded files and resolves to all ids.
+  var pickerSeq = 0;
+  function filePicker() {
+    var files = [];
+    var id = 'files-' + (++pickerSeq);
+    var list = el('ul', { class: 'filelist' });
+    var input = el('input', { type: 'file', multiple: true, id: id });
+    var uploading = false;
+    function paintList() {
+      clear(list);
+      files.forEach(function (f, i) {
+        list.appendChild(el('li', null, f.file.name + ' (' + fmtSize(f.file.size) + ') ',
+          el('button', { type: 'button', class: 'small', 'aria-label': 'Remove ' + f.file.name, text: 'Remove', disabled: uploading, onclick: function () { if (uploading) return; files.splice(i, 1); paintList(); } })));
+      });
+    }
+    input.addEventListener('change', function () {
+      Array.prototype.forEach.call(input.files, function (file) {
+        if (files.length >= MAX_ATTACHMENTS) { toast('At most ' + MAX_ATTACHMENTS + ' attachments.', true); return; }
+        if (file.size > MAX_ATTACHMENT_BYTES) { toast(file.name + ' is larger than 10 MB.', true); return; }
+        files.push({ file: file, id: null });
+      });
+      input.value = ''; paintList();
+    });
+    function upload() {
+      var batch = files.slice();
+      uploading = true; input.disabled = true; paintList();
+      return batch.reduce(function (p, f) {
+        return p.then(function () {
+          if (f.id) return null;
+          return api('POST', '/api/attachments' + qs({ filename: f.file.name }), undefined, undefined,
+            { blob: f.file, type: f.file.type || 'application/octet-stream' }).then(function (r) { f.id = r.id; });
+        });
+      }, Promise.resolve()).then(function (ids) {
+        uploading = false; input.disabled = false; paintList();
+        return batch.map(function (f) { return f.id; });
+      }, function (e) {
+        uploading = false; input.disabled = false; paintList();
+        throw e;
+      });
+    }
+    return { node: el('div', { class: 'field' }, el('label', { for: id, text: 'Attach files (max 10, 10 MB each)' }), input, list), upload: upload };
+  }
+
+  // ---------- @mention autocomplete ----------
+  var usersPromise = null;
+  function loadUsers() {
+    if (!usersPromise) usersPromise = api('GET', '/api/users').then(function (r) { return r.users; }).catch(function () { usersPromise = null; return []; });
+    return usersPromise;
+  }
+  // Wraps a textarea; typing @prefix shows approved users. Returns the wrapper to put in the DOM.
+  function mentionable(ta) {
+    var pop = el('div', { class: 'mention-pop hidden', role: 'listbox', 'aria-label': 'Mention suggestions' });
+    var wrap = el('div', { class: 'mwrap' }, ta, pop);
+    var items = [], active = 0, range = null;
+    function close() { pop.classList.add('hidden'); clear(pop); items = []; range = null; }
+    function paintPop() {
+      clear(pop);
+      items.forEach(function (u, i) {
+        pop.appendChild(el('div', { class: 'mention-item' + (i === active ? ' active' : ''), role: 'option', 'aria-selected': i === active ? 'true' : 'false',
+          onmousedown: function (ev) { ev.preventDefault(); choose(i); } },
+          el('strong', { text: '@' + u.username }), ' ', badge(u.account_type), ' ',
+          el('span', { class: 'mut', text: (u.description || '').slice(0, 60) })));
+      });
+    }
+    function choose(i) {
+      var u = items[i];
+      if (!u || !range) return;
+      var ins = '@' + u.username + ' ';
+      ta.value = ta.value.slice(0, range.start) + ins + ta.value.slice(range.end);
+      var pos = range.start + ins.length;
+      close(); ta.focus(); ta.setSelectionRange(pos, pos);
+    }
+    function update() {
+      var upto = ta.value.slice(0, ta.selectionStart);
+      var m = /(^|[^A-Za-z0-9_-])@([A-Za-z0-9_-]*)$/.exec(upto);
+      if (!m) { close(); return; }
+      var prefix = m[2].toLowerCase();
+      var found = { start: upto.length - m[2].length - 1, end: upto.length };
+      loadUsers().then(function (users) {
+        if (ta.value.slice(0, ta.selectionStart) !== upto) return;
+        items = users.filter(function (u) { return u.username.toLowerCase().indexOf(prefix) === 0; }).slice(0, 8);
+        if (!items.length) { close(); return; }
+        range = found; active = 0; pop.classList.remove('hidden'); paintPop();
+      });
+    }
+    ta.addEventListener('input', update);
+    ta.addEventListener('blur', close);
+    ta.addEventListener('keydown', function (ev) {
+      if (pop.classList.contains('hidden') || !items.length) return;
+      if (ev.key === 'ArrowDown') { ev.preventDefault(); active = (active + 1) % items.length; paintPop(); }
+      else if (ev.key === 'ArrowUp') { ev.preventDefault(); active = (active + items.length - 1) % items.length; paintPop(); }
+      else if (ev.key === 'Enter' || ev.key === 'Tab') { ev.preventDefault(); choose(active); }
+      else if (ev.key === 'Escape') { ev.preventDefault(); close(); }
+    });
+    return wrap;
+  }
 
   // ---------- chrome ----------
   function renderChrome() {
@@ -114,7 +363,7 @@
     document.getElementById('searchform').classList.toggle('hidden', !me);
     if (!me) return;
     var h = location.hash || '#/';
-    [['#/', 'Areas'], ['#/attention', 'Attention'], ['#/activity', 'Activity']]
+    [['#/', 'Areas'], ['#/attention', 'Attention'], ['#/activity', 'Activity'], ['#/users', 'Users']]
       .concat(me.is_superadmin ? [['#/admin', 'Admin']] : []).forEach(function (l) {
         var cur = l[0] === '#/' ? (h === '#/' || h.indexOf('#/area') === 0 || h.indexOf('#/thread') === 0) : h.indexOf(l[0]) === 0;
         nav.appendChild(el('a', { href: l[0], class: cur ? 'cur' : '', 'aria-current': cur ? 'page' : null, text: l[1] }));
@@ -139,11 +388,14 @@
     });
     var nameInput = el('input', { type: 'text', required: true, minlength: 3, maxlength: 32, pattern: '[A-Za-z0-9_\\-]+', autocomplete: 'username' });
     var typeSel = el('select', null, el('option', { value: 'human', text: 'Human' }), el('option', { value: 'agent', text: 'Agent' }));
+    var descInput = el('textarea', { maxlength: 1000, rows: 3 });
+    typeSel.addEventListener('change', function () { descInput.required = typeSel.value === 'agent'; });
     var regErr = el('div'); var regOut = el('div');
-    var regForm = el('form', null, field('Username (3-32 letters, digits, _ or -)', nameInput, 'reg-name'), field('Account type', typeSel, 'reg-type'), regErr,
+    var regForm = el('form', null, field('Username (3-32 letters, digits, _ or -)', nameInput, 'reg-name'), field('Account type', typeSel, 'reg-type'),
+      field('Description (required for agents, shown on the Users page)', descInput, 'reg-desc'), regErr,
       el('button', { type: 'submit', class: 'primary', text: 'Register' }));
     formSubmit(regForm, regErr, function () {
-      return api('POST', '/api/register', { username: nameInput.value.trim(), account_type: typeSel.value }, '').then(function (r) {
+      return api('POST', '/api/register', { username: nameInput.value.trim(), account_type: typeSel.value, description: descInput.value.trim() }, '').then(function (r) {
         setToken(r.token);
         clear(main);
         main.appendChild(el('div', { class: 'card' },
@@ -169,7 +421,7 @@
       ' ', el('button', { type: 'button', text: 'Log out', onclick: function () { setToken(null); viewAuth(); } })));
   }
   function boot() {
-    me = null; renderChrome();
+    me = null; usersPromise = null; renderChrome();
     if (!getToken()) { viewAuth(); return; }
     clear(main); main.appendChild(el('div', { class: 'loading', text: 'Loading…' }));
     api('GET', '/api/me').then(function (u) { me = u; renderChrome(); route(); }).catch(function (e) {
@@ -184,6 +436,7 @@
     if (!me) return;
     renderChrome();
     var id = ++navId;
+    releaseBlobs();
     var h = (location.hash || '#/').slice(1);
     var q = '';
     var qi = h.indexOf('?'); if (qi >= 0) { q = h.slice(qi + 1); h = h.slice(0, qi); }
@@ -197,6 +450,7 @@
     else if (parts[0] === 'attention') fn = function () { return viewAttention(params); };
     else if (parts[0] === 'search') fn = function () { return viewSearch(params); };
     else if (parts[0] === 'activity') fn = viewActivity;
+    else if (parts[0] === 'users') fn = viewUsers;
     else if (parts[0] === 'admin') fn = viewAdmin;
     else fn = function () { return Promise.resolve(el('div', { class: 'empty', text: 'Page not found.' })); };
     function run() {
@@ -250,7 +504,7 @@
       var g = el('div', { class: 'areas' });
       r.areas.forEach(function (a) {
         g.appendChild(el('div', { class: 'card' },
-          el('a', { href: '#/area/' + a.id, text: a.name, class: 't' }),
+          el('a', { href: '#/area/' + areaRef(a), text: a.name, class: 't' }),
           el('div', { class: 'mut', text: a.active_threads + ' active · ' + a.closed_threads + ' closed' }),
           el('div', { class: 'mut', text: a.last_activity_at ? 'Last activity ' + fmt(a.last_activity_at) : 'No activity' }),
           el('p', { class: 'body mut', text: (a.description || '').slice(0, 160) })));
@@ -262,34 +516,39 @@
 
   // ---------- area ----------
   function threadRow(t) {
+    var link = el('a', { class: 't', href: '#/thread/' + t.id }, renderInline(t.title, true));
     return el('div', { class: 'card thread' },
       el('div', { class: 'imp', title: 'Importance (OP score)' }, String(t.importance), el('small', { text: 'score' })),
       el('div', { class: 'grow' },
         el('div', null, t.pinned ? el('span', { class: 'badge pin', text: 'pinned' }) : null, ' ',
           t.closed ? el('span', { class: 'badge closed', text: 'closed: ' + t.closed.reason }) : null, ' ',
-          el('a', { class: 't', href: '#/thread/' + t.id, text: t.title })),
+          link, ' ', modified(t)),
         el('div', { class: 'mut' }, t.area_name + ' · ', userTag(t.owner), ' · ' + t.message_count + ' msgs · active ' + fmt(t.last_activity_at)),
         t.pending_attention ? el('span', { class: 'attn', text: t.pending_attention + ' need your attention' }) : null));
   }
   function viewArea(id, params) {
     var state = params.get('state') || 'active';
     var sort = params.get('sort') || 'importance';
-    return Promise.all([api('GET', '/api/areas/' + encodeURIComponent(id)),
-      api('GET', '/api/threads' + qs({ area_id: id, state: state, sort: sort, limit: PAGE }))]).then(function (rs) {
+    return api('GET', '/api/areas/' + encodeURIComponent(id)).then(function (area) {
+      return api('GET', '/api/threads' + qs({ area_id: area.id, state: state, sort: sort, limit: PAGE })).then(function (list) { return [area, list]; });
+    }).then(function (rs) {
       var area = rs[0], list = rs[1];
       var root = el('div');
       var slot = el('div');
       root.appendChild(el('div', { class: 'row' }, el('h1', { class: 'grow', text: area.name }),
         el('button', { type: 'button', text: 'Edit area', onclick: function () {
           if (slot.firstChild && slot.dataset.k === 'e') { clear(slot); return; }
-          clear(slot); slot.dataset.k = 'e'; slot.appendChild(areaForm(area, route));
+          clear(slot); slot.dataset.k = 'e'; slot.appendChild(areaForm(area, function (a) {
+            var q = location.hash.indexOf('?'), next = '#/area/' + areaRef(a) + (q >= 0 ? location.hash.slice(q) : '');
+            if (location.hash === next) route(); else location.hash = next;
+          }));
         } }),
         el('button', { type: 'button', class: 'primary', text: 'New thread', onclick: function () {
           if (slot.firstChild && slot.dataset.k === 't') { clear(slot); return; }
           clear(slot); slot.dataset.k = 't'; slot.appendChild(threadForm(area));
         } })));
       root.appendChild(el('div', { class: 'card' }, el('div', { class: 'mut', text: 'Area description / instructions' }),
-        el('div', { class: 'body', text: area.description || '(none)' })));
+        area.description ? renderMarkdown(area.description) : el('div', { class: 'body', text: '(none)' })));
       root.appendChild(slot);
       function go(s, o) { location.hash = '#/area/' + id + qs({ state: s, sort: o }); }
       var sortSel = el('select', { onchange: function () { go(state, sortSel.value); } },
@@ -311,7 +570,7 @@
         clear(more);
         if (page.has_more) more.appendChild(el('button', { type: 'button', text: 'Load more threads', onclick: function (ev) {
           act(ev.currentTarget, function () {
-            return api('GET', '/api/threads' + qs({ area_id: id, state: state, sort: sort, limit: PAGE, offset: offset })).then(showPage);
+            return api('GET', '/api/threads' + qs({ area_id: area.id, state: state, sort: sort, limit: PAGE, offset: offset })).then(showPage);
           });
         } }));
       }
@@ -322,11 +581,14 @@
   function threadForm(area) {
     var title = el('input', { type: 'text', required: true, maxlength: 200 });
     var body = el('textarea', { required: true, maxlength: 20000 });
+    var picker = filePicker();
     var err = el('div');
     var f = el('form', { class: 'card' }, el('h2', { text: 'New thread in ' + area.name }), field('Title', title, 'th-title'),
-      field('Opening post (use @username to notify an agent)', body, 'th-body'), err, el('button', { type: 'submit', class: 'primary', text: 'Create thread' }));
+      field('Opening post (use @username to notify an agent)', body, 'th-body', mentionable(body)), picker.node, err, el('button', { type: 'submit', class: 'primary', text: 'Create thread' }));
     formSubmit(f, err, function () {
-      return api('POST', '/api/threads', { area_id: area.id, title: title.value.trim(), body: body.value }).then(function (r) { location.hash = '#/thread/' + r.thread.id; });
+      return picker.upload().then(function (ids) {
+        return api('POST', '/api/threads', { area_id: area.id, title: title.value.trim(), body: body.value, attachment_ids: ids });
+      }).then(function (r) { location.hash = '#/thread/' + r.thread.id; });
     });
     return f;
   }
@@ -347,15 +609,29 @@
     var body = el('div', { class: 'msgbody' });
     var kids = el('div', { class: 'children' });
     var replySlot = el('div');
+    var editing = false;
+    var draft = null;
+    function editForm() {
+      var ta = el('textarea', { required: true, maxlength: 20000, 'aria-label': 'Edit message' }); ta.value = draft === null ? m.body : draft;
+      ta.addEventListener('input', function () { draft = ta.value; });
+      var err = el('div');
+      var f = el('form', null, mentionable(ta), err, el('button', { type: 'submit', class: 'primary small', text: 'Save edit' }), ' ',
+        el('button', { type: 'button', class: 'small', text: 'Cancel', onclick: function () { editing = false; draft = null; paint(); } }));
+      formSubmit(f, err, function () {
+        return api('PATCH', '/api/messages/' + m.id, { body: ta.value }).then(function (nm) { m.body = nm.body; m.edited_at = nm.edited_at; editing = false; draft = null; paint(); });
+      });
+      return f;
+    }
     function paint() {
       var closed = ctx.closed || !!m.thread_closed_reason;
       clear(body);
       body.appendChild(el('div', { class: 'row' }, userTag(m.author),
         m.is_op ? el('span', { class: 'badge closed', text: 'OP' }) : null,
-        el('span', { class: 'mut', text: fmt(m.created_at) }),
+        el('span', { class: 'mut', text: fmt(m.created_at) }), modified(m),
         m.my_attention ? el('span', { class: 'attn', title: 'reason: ' + m.my_attention.reason, text: 'attention: ' + m.my_attention.status }) : null,
         links ? el('a', { href: ctxHref(m), text: 'context' }) : null));
-      body.appendChild(el('div', { class: 'body', text: m.body }));
+      body.appendChild(editing ? editForm() : renderMarkdown(m.body));
+      add(body, attachmentsNode(m));
       var actions = el('div', { class: 'actions' });
       DELTAS.forEach(function (d) {
         actions.appendChild(el('button', { type: 'button', class: 'small', disabled: closed, 'aria-label': 'Vote ' + (d > 0 ? '+' : '') + d, text: (d > 0 ? '+' : '') + d, onclick: function (ev) {
@@ -388,6 +664,10 @@
         }));
       } });
       body.appendChild(actions); body.appendChild(reacts); body.appendChild(rb);
+      if (me.id === m.author.id) {
+        body.appendChild(document.createTextNode(' '));
+        body.appendChild(el('button', { type: 'button', class: 'small', disabled: closed || editing, text: 'Edit', onclick: function () { editing = true; paint(); } }));
+      }
     }
     paint();
     node.kids.forEach(function (k) { kids.appendChild(renderMsgNode(k, ctx, depth + 1, links)); });
@@ -401,12 +681,15 @@
   }
   function replyForm(parent, ctx, done) {
     var ta = el('textarea', { required: true, maxlength: 20000, 'aria-label': 'Reply to ' + parent.author.username });
+    var picker = filePicker();
     var err = el('div');
-    var f = el('form', null, ta, err, el('button', { type: 'submit', class: 'primary small', text: 'Post reply' }));
+    var f = el('form', null, mentionable(ta), picker.node, err, el('button', { type: 'submit', class: 'primary small', text: 'Post reply' }));
     formSubmit(f, err, function () {
-      var body = { body: ta.value };
-      if (parent !== null && parent.id) body.parent_id = parent.id;
-      return api('POST', '/api/threads/' + parent.thread_id + '/messages', body).then(done);
+      return picker.upload().then(function (ids) {
+        var body = { body: ta.value, attachment_ids: ids };
+        if (parent !== null && parent.id) body.parent_id = parent.id;
+        return api('POST', '/api/threads/' + parent.thread_id + '/messages', body);
+      }).then(done);
     });
     return f;
   }
@@ -417,9 +700,22 @@
       var t = d.thread;
       var root = el('div');
       var ctx = { closed: !!t.closed, targetId: targetParam ? Number(targetParam) : null, added: function () { route(); } };
-      root.appendChild(el('div', { class: 'mut' }, el('a', { href: '#/area/' + t.area_id, text: t.area_name })));
-      root.appendChild(el('div', { class: 'row' }, el('h1', { class: 'grow', text: t.title }),
-        t.pinned ? el('span', { class: 'badge pin', text: 'pinned' }) : null));
+      root.appendChild(el('div', { class: 'mut' }, el('a', { href: '#/area/' + areaRef(t), text: t.area_name })));
+      var titleSlot = el('div');
+      function paintTitle() {
+        clear(titleSlot);
+        titleSlot.appendChild(el('div', { class: 'row' }, el('h1', { class: 'grow' }, renderInline(t.title, false), ' ', modified(t)),
+          t.pinned ? el('span', { class: 'badge pin', text: 'pinned' }) : null));
+      }
+      function titleForm() {
+        var input = el('input', { type: 'text', required: true, maxlength: 200, value: t.title, 'aria-label': 'Edit title' });
+        var err = el('div');
+        var f = el('form', { class: 'row' }, input, el('button', { type: 'submit', class: 'primary small', text: 'Save title' }), el('button', { type: 'button', class: 'small', text: 'Cancel', onclick: paintTitle }), err);
+        formSubmit(f, err, function () { return api('PATCH', '/api/threads/' + t.id, { title: input.value.trim() }).then(route); });
+        return f;
+      }
+      paintTitle();
+      root.appendChild(titleSlot);
       var impl = el('span', { text: 'importance (OP score): ' + t.importance });
       ctx.onOpScore = function (v) { impl.textContent = 'importance (OP score): ' + v; };
       root.appendChild(el('div', { class: 'mut' }, 'Started by ', userTag(t.owner), ' · ', impl));
@@ -438,6 +734,7 @@
         controls.appendChild(menu);
       }
       if (me.id === t.owner.id) {
+        controls.appendChild(el('button', { type: 'button', disabled: !!t.closed, text: 'Edit title', onclick: function () { clear(titleSlot); titleSlot.appendChild(titleForm()); titleSlot.querySelector('input').focus(); } }));
         controls.appendChild(el('button', { type: 'button', disabled: !!t.closed, text: t.pinned ? 'Unpin' : 'Pin to top', onclick: function (ev) {
           act(ev.currentTarget, function () { return api('PUT', '/api/threads/' + t.id + '/pin', { pinned: !t.pinned }).then(route); }); } }));
       }
@@ -447,10 +744,14 @@
       if (!tree.length) root.appendChild(el('div', { class: 'empty', text: 'No messages.' }));
       tree.forEach(function (n) { root.appendChild(renderMsgNode(n, ctx, 0, true)); });
       var errSlot = el('div'); var ta = el('textarea', { required: true, maxlength: 20000 });
-      var f = el('form', { class: 'card' }, field(t.closed ? 'Thread closed: reopen to reply' : 'Add top-level reply (@username to notify an agent)', ta, 'top-reply'), errSlot,
+      var picker = filePicker();
+      var f = el('form', { class: 'card' }, field(t.closed ? 'Thread closed: reopen to reply' : 'Add top-level reply (@username to notify an agent)', ta, 'top-reply', mentionable(ta)), picker.node, errSlot,
         el('button', { type: 'submit', class: 'primary', disabled: !!t.closed, text: 'Post' }));
       if (t.closed) ta.disabled = true;
-      formSubmit(f, errSlot, function () { return api('POST', '/api/threads/' + t.id + '/messages', { body: ta.value }).then(route); });
+      if (t.closed) picker.node.querySelector('input').disabled = true;
+      formSubmit(f, errSlot, function () {
+        return picker.upload().then(function (ids) { return api('POST', '/api/threads/' + t.id + '/messages', { body: ta.value, attachment_ids: ids }); }).then(route);
+      });
       root.appendChild(f);
       return root;
     });
@@ -461,9 +762,9 @@
     return api('GET', '/api/messages/' + encodeURIComponent(id) + '/context').then(function (c) {
       var root = el('div');
       var closed = !!c.thread.closed;
-      root.appendChild(el('div', { class: 'mut' }, el('a', { href: '#/area/' + c.area.id, text: c.area.name })));
-      root.appendChild(el('h1', { text: c.thread.title }));
-      root.appendChild(el('div', { class: 'card' }, el('div', { class: 'mut', text: 'Area description / instructions' }), el('div', { class: 'body', text: c.area.description || '(none)' })));
+      root.appendChild(el('div', { class: 'mut' }, el('a', { href: '#/area/' + areaRef(c.area), text: c.area.name })));
+      root.appendChild(el('h1', null, renderInline(c.thread.title, false), ' ', modified(c.thread)));
+      root.appendChild(el('div', { class: 'card' }, el('div', { class: 'mut', text: 'Area description / instructions' }), c.area.description ? renderMarkdown(c.area.description) : el('div', { class: 'body', text: '(none)' })));
       root.appendChild(el('p', null, el('a', { href: '#/thread/' + c.thread.id + '?m=' + c.target_id, text: 'Open full thread at this message' }),
         closed ? ' · closed (' + c.thread.closed.reason + ')' : ''));
       var ctx = { closed: closed, targetId: c.target_id, added: route };
@@ -501,7 +802,7 @@
         page.items.forEach(function (m) {
           var box = el('div', { class: 'card' });
           var ctx = { closed: false, added: route };
-          box.appendChild(el('div', { class: 'mut' }, m.area_name + ' › ', el('a', { href: '#/thread/' + m.thread_id, text: m.thread_title }), ' · reason: ' + (m.my_attention ? m.my_attention.reason : ''), ' ',
+          box.appendChild(el('div', { class: 'mut' }, m.area_name + ' › ', el('a', { href: '#/thread/' + m.thread_id }, renderInline(m.thread_title, true)), ' · reason: ' + (m.my_attention ? m.my_attention.reason : ''), ' ',
             m.thread_closed_reason ? el('span', { class: 'badge closed', text: 'closed: ' + m.thread_closed_reason }) : null, ' ',
             m.thread_closed_reason ? el('a', { href: '#/thread/' + m.thread_id, text: 'Reopen thread' }) : null));
           box.appendChild(renderMsgNode({ m: m, kids: [] }, ctx, 1, true));
@@ -535,11 +836,11 @@
       root.appendChild(el('p', { class: 'mut', text: 'Results for "' + q + '"' }));
       if (!r.areas.length && !r.threads.length && !r.messages.length) root.appendChild(el('div', { class: 'empty', text: 'No results.' }));
       var cats = {
-        areas: { title: 'Areas', draw: function (a) { return el('div', { class: 'card' }, el('a', { href: '#/area/' + a.id, text: a.name }), el('div', { class: 'body mut', text: a.snippet })); } },
-        threads: { title: 'Threads', draw: function (t) { return el('div', { class: 'card' }, el('a', { href: '#/thread/' + t.id, text: t.title }), ' ', el('span', { class: 'mut', text: t.area_name }), t.closed_reason ? el('span', { class: 'badge closed', text: ' closed: ' + t.closed_reason }) : null); } },
+        areas: { title: 'Areas', draw: function (a) { return el('div', { class: 'card' }, el('a', { href: '#/area/' + areaRef(a), text: a.name }), el('div', { class: 'body mut', text: a.snippet })); } },
+        threads: { title: 'Threads', draw: function (t) { return el('div', { class: 'card' }, el('a', { href: '#/thread/' + t.id }, renderInline(t.title, true)), ' ', modified(t), ' ', el('span', { class: 'mut', text: t.area_name }), t.closed_reason ? el('span', { class: 'badge closed', text: ' closed: ' + t.closed_reason }) : null); } },
         messages: { title: 'Messages', draw: function (m) {
           return el('div', { class: 'card' },
-            el('div', { class: 'mut' }, m.area_name + ' › ', el('a', { href: '#/thread/' + m.thread_id, text: m.thread_title }), ' · ', userTag(m.author), ' · ' + fmt(m.created_at),
+            el('div', { class: 'mut' }, m.area_name + ' › ', el('a', { href: '#/thread/' + m.thread_id }, renderInline(m.thread_title, true)), ' · ', userTag(m.author), ' · ' + fmt(m.created_at), ' ', modified(m),
               m.closed_reason ? el('span', { class: 'badge closed', text: 'closed: ' + m.closed_reason }) : null),
             el('div', { class: 'body', text: m.snippet }),
             el('a', { href: '#/context/' + m.id, text: 'Show context' }));
@@ -569,7 +870,7 @@
 
   // ---------- activity ----------
   var KIND = { area_created: 'created area', area_updated: 'updated area', thread_created: 'created thread', message_posted: 'posted a message in',
-    thread_closed: 'closed thread', thread_reopened: 'reopened thread', thread_pinned: 'pinned thread', thread_unpinned: 'unpinned thread' };
+    message_edited: 'edited a message in', thread_edited: 'edited thread', thread_closed: 'closed thread', thread_reopened: 'reopened thread', thread_pinned: 'pinned thread', thread_unpinned: 'unpinned thread' };
   function viewActivity() {
     var root = el('div'); root.appendChild(el('h1', { text: 'Activity' }));
     var list = el('div'); var more = el('div'); root.appendChild(list); root.appendChild(more);
@@ -582,7 +883,7 @@
         r.events.forEach(function (e) {
           lastId = e.id;
           var href = e.message_id ? '#/context/' + e.message_id
-            : e.thread_id ? '#/thread/' + e.thread_id : e.area_id ? '#/area/' + e.area_id : '#/';
+            : e.thread_id ? '#/thread/' + e.thread_id : e.area_id ? '#/area/' + areaRef(e) : '#/';
           list.appendChild(el('div', { class: 'card' },
             el('div', null, userTag(e.actor), ' ' + (KIND[e.kind] || e.kind) + ' ', el('a', { href: href, text: e.thread_title || e.area_name || 'item' }),
               e.kind === 'thread_closed' && e.detail ? ' (' + e.detail + ')' : ''),
@@ -592,6 +893,35 @@
       }).catch(function (e) { clear(more); more.appendChild(errBox(e, function () { load(); })); });
     }
     return load().then(function () { return root; });
+  }
+
+  // ---------- users ----------
+  function viewUsers() {
+    return api('GET', '/api/users').then(function (r) {
+      var root = el('div'); root.appendChild(el('h1', { text: 'Users' }));
+      r.users.forEach(function (u) {
+        var card = el('div', { class: 'card user' });
+        function paintUser() {
+          clear(card);
+          card.appendChild(el('div', { class: 'row' }, el('div', { class: 'grow' }, userTag(u), u.id === me.id ? el('span', { class: 'mut', text: ' (you)' }) : null),
+            u.id === me.id ? el('button', { type: 'button', class: 'small', text: 'Edit description', onclick: function () { clear(card); card.appendChild(descForm()); } }) : null));
+          card.appendChild(el('div', { class: 'body userdesc' + (u.description ? '' : ' mut'), text: u.description || '(no description)' }));
+        }
+        function descForm() {
+          var ta = el('textarea', { maxlength: 1000, 'aria-label': 'Your description', required: u.account_type === 'agent' }); ta.value = u.description;
+          var err = el('div');
+          var f = el('form', null, el('div', null, userTag(u)), ta, err, el('button', { type: 'submit', class: 'primary small', text: 'Save description' }), ' ',
+            el('button', { type: 'button', class: 'small', text: 'Cancel', onclick: paintUser }));
+          formSubmit(f, err, function () {
+            return api('PATCH', '/api/me', { description: ta.value.trim() }).then(function (nu) { u.description = nu.description; me.description = nu.description; usersPromise = null; paintUser(); });
+          });
+          return f;
+        }
+        paintUser();
+        root.appendChild(card);
+      });
+      return root;
+    });
   }
 
   // ---------- admin ----------

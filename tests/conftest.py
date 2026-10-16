@@ -59,9 +59,12 @@ class Board:
         self.client.close()
         self.client = TestClient(create_app(self.path, static_dir=self.path.parent / "nostatic"))
 
-    def register(self, username, account_type="human", approve=True):
+    def register(self, username, account_type="human", approve=True, description=None):
+        if description is None:
+            description = "test agent" if account_type == "agent" else ""
         r = self.client.post(
-            "/api/register", json={"username": username, "account_type": account_type}
+            "/api/register",
+            json={"username": username, "account_type": account_type, "description": description},
         )
         assert r.status_code == 201, r.text
         actor = Actor(self.client, r.json())

@@ -15,11 +15,14 @@ from threaddit.schemas import (
     AreaPatch,
     CloseIn,
     MessageIn,
+    MessagePatch,
     PinIn,
     ReactionIn,
     ThreadIn,
+    ThreadPatch,
     VoteIn,
 )
+from threaddit.slugs import unique_area_slug
 from threaddit.service import (
     add_event,
     get_message_row,
@@ -67,29 +70,37 @@ def create_area(body: AreaIn, request: Request):
             " VALUES (?, ?, ?, ?, ?, ?)",
             (body.name, body.name.lower(), body.description, user["id"], ts, ts),
         ).lastrowid
+        conn.execute(
+            "UPDATE areas SET slug = ? WHERE id = ?",
+            (unique_area_slug(conn, body.name, area_id), area_id),
+        )
         add_event(conn, "area_created", user["id"], area_id)
         return area_json(get_area(conn, area_id))
 
 
-@router.get("/api/areas/{area_id}")
-def read_area(area_id: int, request: Request):
+@router.get("/api/areas/{area_ref}")
+def read_area(area_ref: str, request: Request):
     with session(request) as (conn, _):
-        return area_json(get_area(conn, area_id))
+        return area_json(get_area(conn, area_ref))
 
 
-@router.patch("/api/areas/{area_id}")
-def edit_area(area_id: int, body: AreaPatch, request: Request):
+@router.patch("/api/areas/{area_ref}")
+def edit_area(area_ref: str, body: AreaPatch, request: Request):
     with session(request, write=True) as (conn, user):
-        area = get_area(conn, area_id)
+        area = get_area(conn, area_ref)
+        area_id = area["id"]
         name = body.name if body.name is not None else area["name"]
         description = (
             body.description if body.description is not None else area["description"]
         )
         _check_area_name_free(conn, name, area_id)
+        slug = (
+            unique_area_slug(conn, name, area_id) if body.name is not None else area["slug"]
+        )
         conn.execute(
-            "UPDATE areas SET name = ?, name_key = ?, description = ?, updated_at = ?"
+            "UPDATE areas SET name = ?, name_key = ?, slug = ?, description = ?, updated_at = ?"
             " WHERE id = ?",
-            (name, name.lower(), description, now(), area_id),
+            (name, name.lower(), slug, description, now(), area_id),
         )
         add_event(conn, "area_updated", user["id"], area_id)
         return area_json(get_area(conn, area_id))
@@ -144,7 +155,9 @@ def create_thread(body: ThreadIn, request: Request):
             (body.area_id, body.title, user["id"], ts, ts),
         ).lastrowid
         thread = get_thread_row(conn, thread_id)
-        insert_message(conn, thread, user, body.body, None, is_op=True)
+        insert_message(
+            conn, thread, user, body.body, None, is_op=True, attachment_ids=body.attachment_ids
+        )
         add_event(conn, "thread_created", user["id"], body.area_id, thread_id)
         return _thread_detail(conn, user["id"], thread_id)
 
@@ -170,8 +183,25 @@ def post_message(thread_id: int, body: MessageIn, request: Request):
     with session(request, write=True) as (conn, user):
         thread = get_thread_row(conn, thread_id)
         require_open(thread)
-        message_id = insert_message(conn, thread, user, body.body, body.parent_id)
+        message_id = insert_message(
+            conn, thread, user, body.body, body.parent_id, attachment_ids=body.attachment_ids
+        )
         return get_message_json(conn, user["id"], message_id)
+
+
+@router.patch("/api/threads/{thread_id}")
+def edit_thread(thread_id: int, body: ThreadPatch, request: Request):
+    with session(request, write=True) as (conn, user):
+        thread = get_thread_row(conn, thread_id)
+        require_open(thread)
+        if thread["owner_id"] != user["id"]:
+            raise ApiError(403, "not_owner", "Only the thread owner can edit its title.")
+        conn.execute(
+            "UPDATE threads SET title = ?, edited_at = ? WHERE id = ?",
+            (body.title, now(), thread_id),
+        )
+        add_event(conn, "thread_edited", user["id"], thread["area_id"], thread_id)
+        return get_thread_json(conn, user["id"], thread_id)
 
 
 @router.post("/api/threads/{thread_id}/close")
@@ -241,6 +271,24 @@ def _writable_message(conn: sqlite3.Connection, message_id: int) -> sqlite3.Row:
 @router.get("/api/messages/{message_id}")
 def read_message(message_id: int, request: Request):
     with session(request) as (conn, user):
+        return get_message_json(conn, user["id"], message_id)
+
+
+@router.patch("/api/messages/{message_id}")
+def edit_message(message_id: int, body: MessagePatch, request: Request):
+    with session(request, write=True) as (conn, user):
+        message = get_message_row(conn, message_id)
+        thread = get_thread_row(conn, message["thread_id"])
+        require_open(thread)
+        if message["author_id"] != user["id"]:
+            raise ApiError(403, "not_author", "Only the message author can edit it.")
+        conn.execute(
+            "UPDATE messages SET body = ?, edited_at = ? WHERE id = ?",
+            (body.body, now(), message_id),
+        )
+        add_event(
+            conn, "message_edited", user["id"], thread["area_id"], thread["id"], message_id
+        )
         return get_message_json(conn, user["id"], message_id)
 
 

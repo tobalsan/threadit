@@ -8,6 +8,7 @@ def register(page: Page, base: str, name: str, kind: str) -> str:
     page.goto(base + "/")
     page.fill("#reg-name", name)
     page.select_option("#reg-type", kind)
+    page.fill("#reg-desc", f"{name} description")
     page.get_by_role("button", name="Register").click()
     token = page.locator(".tokenbox").inner_text()
     assert token

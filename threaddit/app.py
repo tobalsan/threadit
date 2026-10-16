@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from threaddit import routes_board, routes_feed, routes_users
+from threaddit import routes_attachments, routes_board, routes_feed, routes_users
 from threaddit.core import ApiError
 from threaddit.db import Database
 
@@ -16,7 +16,7 @@ DEFAULT_STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 SECURITY_HEADERS = {
     "X-Content-Type-Options": "nosniff",
     "Content-Security-Policy": (
-        "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;"
+        "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:;"
         " object-src 'none'; frame-ancestors 'none'; base-uri 'none'"
     ),
 }
@@ -64,6 +64,7 @@ def create_app(database_path, static_dir: Path | str | None = None) -> FastAPI:
         )
 
     app.include_router(routes_users.router)
+    app.include_router(routes_attachments.router)
     app.include_router(routes_board.router)
     app.include_router(routes_feed.router)
 
