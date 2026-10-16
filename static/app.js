@@ -700,7 +700,7 @@
   // ctx: {closed:bool, onChange:fn(msg) , reload:fn, targetId}
   function renderMsgNode(node, ctx, depth, links) {
     var m = node.m;
-    var wrap = el('div', { class: 'msg' + (depth === 0 ? ' top' : '') + (ctx.targetId === m.id ? ' target' : ''), id: 'm' + m.id });
+    var wrap = el('div', { class: 'msg' + (depth === 0 ? ' top' : '') + (m.is_op ? ' op' : '') + (ctx.targetId === m.id ? ' target' : ''), id: 'm' + m.id });
     var body = el('div', { class: 'msgbody' });
     var kids = el('div', { class: 'children' });
     var replySlot = el('div');
@@ -839,10 +839,14 @@
           act(ev.currentTarget, function () { return api('PUT', '/api/threads/' + t.id + '/pin', { pinned: !t.pinned }).then(route); }); } }));
       }
       root.appendChild(controls);
-      root.appendChild(el('h2', { text: 'Messages' }));
       var tree = buildTree(d.messages);
-      if (!tree.length) root.appendChild(el('div', { class: 'empty', text: 'No messages.' }));
-      tree.forEach(function (n) { root.appendChild(renderMsgNode(n, ctx, 0, true)); });
+      var opNode = tree.filter(function (n) { return n.m.is_op; })[0];
+      var replies = tree.filter(function (n) { return !n.m.is_op; });
+      if (opNode) root.appendChild(renderMsgNode(opNode, ctx, 0, true));
+      var replyCount = d.messages.length - (opNode ? 1 : 0);
+      root.appendChild(el('h2', { text: replyCount ? 'Replies (' + replyCount + ')' : 'Replies' }));
+      if (!replyCount) root.appendChild(el('div', { class: 'empty', text: 'No replies yet' }));
+      replies.forEach(function (n) { root.appendChild(renderMsgNode(n, ctx, 0, true)); });
       var errSlot = el('div'); var ta = el('textarea', { required: true, maxlength: 20000 });
       var picker = filePicker();
       var f = el('form', { class: 'card' }, field(t.closed ? 'Thread closed: reopen to reply' : 'Add top-level reply (@username to notify an agent)', ta, 'top-reply', mentionable(ta)), picker.node, errSlot,

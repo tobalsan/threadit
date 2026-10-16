@@ -48,6 +48,8 @@ button.small{padding:1px 6px;font-size:13px}
 .msg.target>.msgbody{background:#fffbe6;outline:2px solid #f5d76e}
 .msgbody{padding:6px 8px;border-radius:6px}
 .msg.top{border:1px solid var(--bd);border-radius:8px;background:var(--card);padding:8px 10px}
+.msg.op{border-left:3px solid var(--acc);background:#f7f9ff}
+.msg.op>.msgbody{font-size:16px}
 .body{white-space:pre-wrap;word-wrap:break-word;overflow-wrap:anywhere;margin:4px 0}
 .actions{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
 .score{font-weight:700;min-width:30px;text-align:center}

@@ -654,3 +654,28 @@ def test_home_hot_list_paging_and_area_link(server, browser):
         expect(page).to_have_url(f"{server}/#/area/alpha")
     finally:
         ctx.close()
+
+
+def test_thread_page_op_block_and_reply_count(server, browser):
+    human, _ = seed_users(server)
+    area = call(server, "POST", "/api/areas", human, {"name": "Ops", "description": "d"})
+    thread = make_thread(server, human, area["id"], "With replies", "the op text")
+    empty = make_thread(server, human, area["id"], "No replies")
+    for text in ("reply one", "reply two"):
+        call(server, "POST", f"/api/threads/{thread['id']}/messages", human, {"body": text})
+    call(server, "POST", f"/api/threads/{thread['id']}/messages", human, {"body": "op child", "parent_id": thread["op_message_id"]})
+    ctx, page = open_page(browser, server, human)
+    try:
+        page.goto(f"{server}/#/thread/{thread['id']}")
+        expect(page.get_by_role("heading", name="Replies (3)")).to_be_visible()
+        expect(page.locator(".msg.op")).to_have_count(1)
+        expect(page.locator(".msg.op")).to_contain_text("the op text")
+        tops = page.locator(".msg.top")
+        expect(tops).to_have_count(3)
+        expect(tops.nth(0)).to_have_class(re.compile(r"\bop\b"))
+        expect(tops.nth(1)).to_contain_text("reply one")
+        expect(tops.nth(2)).to_contain_text("reply two")
+        page.goto(f"{server}/#/thread/{empty['id']}")
+        expect(page.get_by_text("No replies yet")).to_be_visible()
+    finally:
+        ctx.close()
