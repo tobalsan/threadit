@@ -720,12 +720,12 @@
       showSheet(r.areas, cur, prev, !cur);
     }).catch(function (e) { toast(e.message || String(e), true); });
   }
-  function showSheet(areas, cur, prev, openList) {
+  function showSheet(areas, cur, prev, openList, carry) {
     removeSheet();
     var newBtn = document.getElementById('newbtn');
     var title = el('input', { type: 'text', class: 'tin', required: true, maxlength: 200, autocomplete: 'off' });
     var body = el('textarea', { required: true, maxlength: 20000 });
-    var picker = filePicker();
+    var picker = carry ? carry.picker : filePicker();
     var err = el('div');
     var areaBtn = el('button', { type: 'button', class: 'apick', 'aria-haspopup': 'listbox', 'aria-expanded': 'false',
       'aria-label': cur ? 'Area: ' + cur.name : 'Area: choose one' },
@@ -734,6 +734,14 @@
     var areaFld = el('div', { class: 'fld' }, el('span', { class: 'fl', text: 'Area' }), areaBtn);
     var clearTitle = function () {}, clearBody = function () {};
     if (cur) { clearTitle = persist(title, 'thread:' + cur.id + ':title'); clearBody = persist(body, 'thread:' + cur.id + ':body'); }
+    // choosing an area rebuilds the sheet: keep what the user already typed and attached
+    if (carry) {
+      [[title, carry.title], [body, carry.body]].forEach(function (p) {
+        if (!p[1]) return;
+        p[0].value = p[1];
+        p[0].dispatchEvent(new Event('input'));
+      });
+    }
     var form = el('form', { class: 'sheet glass', role: 'dialog', 'aria-label': 'New thread' },
       el('h2', { text: 'New thread' }), areaFld,
       el('div', { class: 'fld' }, el('label', { for: 'th-title', text: 'Title' }), title),
@@ -779,7 +787,7 @@
       function choose(a) {
         if (cur && a.id === cur.id) { closeDrop(false); title.focus(); return; }
         rememberArea(a.id);
-        showSheet(areas, a, prev, false);
+        showSheet(areas, a, prev, false, { title: title.value, body: body.value, picker: picker });
       }
       function build() {
         var q = input.value.trim();

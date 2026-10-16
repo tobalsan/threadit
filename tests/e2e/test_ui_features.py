@@ -1132,3 +1132,32 @@ def test_auth_screen_is_one_glass_card_without_shell(server, browser):
     expect(card.get_by_role("heading", name="Register")).to_be_visible()
     expect(page.locator(".sidebar")).to_be_hidden()
     page.close()
+
+
+def test_new_thread_sheet_keeps_typed_text_and_files_when_choosing_area(server, browser):
+    human, _ = seed_users(server)
+    call(server, "POST", "/api/areas", human, {"name": "Alpha", "description": "First"})
+    call(server, "POST", "/api/areas", human, {"name": "Beta", "description": "Second"})
+    ctx, page = open_page(browser, server, human)
+    try:
+        sheet = page.get_by_role("dialog", name="New thread")
+        page.get_by_role("button", name="New thread").click()
+        expect(page.get_by_role("combobox", name="Filter areas")).to_be_focused()
+        # dismiss the list, type, attach, then choose an area
+        page.keyboard.press("Escape")
+        expect(page.get_by_role("combobox", name="Filter areas")).to_have_count(0)
+        sheet.get_by_label("Title").fill("typed title")
+        sheet.get_by_label("Opening post (use @username to notify an agent)").fill("typed body")
+        sheet.locator("input[type=file]").set_input_files({"name": "pic.png", "mimeType": "image/png", "buffer": PNG})
+        expect(sheet.locator(".filelist li")).to_contain_text("pic.png")
+        sheet.get_by_role("button", name="Area: choose one").click()
+        page.get_by_role("option", name=re.compile("^Beta")).click()
+        expect(sheet.get_by_role("button", name="Area: Beta")).to_be_visible()
+        expect(sheet.get_by_label("Title")).to_have_value("typed title")
+        expect(sheet.get_by_label("Opening post (use @username to notify an agent)")).to_have_value("typed body")
+        expect(sheet.locator(".filelist li")).to_contain_text("pic.png")
+        sheet.get_by_role("button", name="Create thread").click()
+        expect(page.locator("h1.ttitle")).to_have_text("typed title")
+        expect(page.get_by_role("button", name="Open image pic.png")).to_be_visible()
+    finally:
+        ctx.close()
