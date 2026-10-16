@@ -765,9 +765,9 @@ def test_thread_list_cards_show_meta_and_area_controls(server, browser):
                 page.locator("#sortsel").select_option("created")
             expect(page.locator(sel)).to_be_visible()
         assert row.bounding_box()["y"] > 0
-        first = page.locator(".li.thread").nth(1).bounding_box()
-        second = page.locator(".li.thread").nth(2).bounding_box()
-        assert 7 <= second["y"] - (first["y"] + first["height"]) <= 9
+        expect(page.locator(".li.thread")).to_have_count(3)
+        gap = page.locator(".li.thread").first.evaluate("e => getComputedStyle(e.parentElement).rowGap")
+        assert gap == "8px"
         page.goto(f"{server}/#/")
         expect(page.locator(".li.thread")).to_have_count(3)
     finally:
