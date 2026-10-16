@@ -39,11 +39,12 @@ No linter/formatter is configured. Don't add `# noqa` (some old tests have them;
 
 **Thread ordering** (`views.THREAD_ORDERS`, `order=asc|desc`):
 - `importance` = OP score, ties → `last_activity_at` → `created_at` → id. `created` → `created_at`, `activity` → `last_activity_at`.
+- `hot` = `op.score - 2*log2(1 + idle days)`, ties → `last_activity_at` → id. Pins are not split out for `hot`. Used by Home (`#/`), which does not re-sort client-side. `log2` is registered per connection in `db.py`.
 - Never use id as a proxy for date: imported threads have backdated `created_at`, and `last_activity_at` = import time.
 - Activity = new message, close, reopen (not edits, votes, reactions).
 - `static/app.js` `viewArea` re-sorts loaded rows client-side 2s after a quick vote (debounced); keep its comparator in sync with `THREAD_ORDERS`.
 
-**Frontend (`static/`).** Vanilla JS, no build step, single IIFE in `app.js`. Hash router (`#/area/<slug>`, `#/thread/<id>`, `#/attention`, `#/activity`, `#/search`, `#/users`, `#/admin`).
+**Frontend (`static/`).** Vanilla JS, no build step, single IIFE in `app.js`. Hash router (`#/` Home = hot list across areas with `?page=N`, `#/areas`, `#/area/<slug>`, `#/thread/<id>`, `#/attention`, `#/activity`, `#/search`, `#/users`, `#/admin`).
 - `el(tag, attrs, ...children)`: never innerHTML; `null`/`false` attrs and children are skipped. Markdown = safe DOM-built subset (`mdInline`/`mdBlocks`, `safeHref`), incl. bare-URL autolinks; titles inside list links use `renderInline(t, true)` (no nested links).
 - Reuse the form helpers: `formSubmit` (inline errors, disables submit, Cmd/Ctrl+Enter in textareas), `persist(input, key)` (localStorage draft; call the returned clear fn after success/Cancel), `mentionable(textarea)` (@ autocomplete), `filePicker()` (📎 toggle, `.dropTarget(form)`, `.upload()` → ids).
 - Attachment images can't send the bearer header: fetched via `attachmentUrl()` → object URLs (cached, released on navigation); lightbox on click.

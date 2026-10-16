@@ -27,7 +27,7 @@ def login(page: Page, base: str, token: str) -> None:
     page.goto(base + "/")
     page.fill("#login-token", token)
     page.get_by_role("button", name="Log in").click()
-    expect(page.get_by_role("heading", name="Areas")).to_be_visible()
+    expect(page.get_by_role("heading", name="Home")).to_be_visible()
 
 
 def make_thread(base, token, area_id, title, body="op"):

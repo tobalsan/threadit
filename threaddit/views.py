@@ -37,9 +37,13 @@ JOIN messages op ON op.thread_id = t.id AND op.is_op = 1
 LEFT JOIN users cb ON cb.id = t.closed_by
 """
 
+# "hot" = OP score minus a penalty that grows with idle days: 2 * log2(1 + idle_days).
+# Score matters most. Each +2 score keeps the rank while (1 + idle days) doubles.
 THREAD_ORDERS = {
     "created": "t.created_at {d}, t.id {d}",
     "activity": "t.last_activity_at {d}, t.id {d}",
+    "hot": "op.score - 2.0 * log2(1 + MAX(0, julianday('now') - julianday(t.last_activity_at))) {d},"
+    " t.last_activity_at {d}, t.id {d}",
     "importance": "op.score {d}, t.last_activity_at {d}, t.created_at {d}, t.id {d}",
 }
 

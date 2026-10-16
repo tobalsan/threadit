@@ -311,7 +311,7 @@ def test_slug_urls(server, browser):
         expect(page.get_by_role("alert")).to_contain_text("does not exist")
         # renaming changes the slug used by links
         call(server, "PATCH", f"/api/areas/{area['id']}", human, {"name": "Renamed"})
-        page.goto(f"{server}/#/")
+        page.goto(f"{server}/#/areas")
         assert page.get_by_role("link", name="Renamed").get_attribute("href") == "#/area/renamed"
     finally:
         ctx.close()
@@ -619,5 +619,38 @@ def test_list_score_colors_and_debounced_importance_resort(server, browser):
         expect(top_score).to_have_text("-6")
         expect(top_imp).to_have_class(re.compile("sc-cold"))
         assert low["id"] != top["id"]
+    finally:
+        ctx.close()
+
+
+def test_home_hot_list_paging_and_area_link(server, browser):
+    human, _ = seed_users(server)
+    one = call(server, "POST", "/api/areas", human, {"name": "Alpha", "description": "d"})
+    two = call(server, "POST", "/api/areas", human, {"name": "Beta", "description": "d"})
+    ctx, page = open_page(browser, server, human)
+    try:
+        expect(page.get_by_text("No active threads yet.")).to_be_visible()
+        first = make_thread(server, human, one["id"], "alpha-first")
+        make_thread(server, human, two["id"], "beta-second")
+        call(server, "POST", f"/api/messages/{first['op_message_id']}/votes", human, {"delta": 5})
+        page.goto(f"{server}/#/")
+        page.reload()
+        rows = page.locator(".card.thread")
+        expect(rows).to_have_count(2)
+        expect(rows.nth(0)).to_contain_text("alpha-first")
+        expect(rows.nth(1)).to_contain_text("beta-second")
+        for i in range(21):
+            make_thread(server, human, two["id"], f"bulk {i}")
+        page.reload()
+        expect(rows).to_have_count(20)
+        expect(page.get_by_role("link", name="Previous")).to_have_count(0)
+        page.get_by_role("link", name="Next").click()
+        expect(page).to_have_url(f"{server}/#/?page=2")
+        expect(rows).to_have_count(3)
+        expect(page.get_by_role("link", name="Next")).to_have_count(0)
+        page.get_by_role("link", name="Previous").click()
+        expect(rows).to_have_count(20)
+        rows.nth(0).get_by_role("link", name="Alpha", exact=True).click()
+        expect(page).to_have_url(f"{server}/#/area/alpha")
     finally:
         ctx.close()

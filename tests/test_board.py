@@ -362,3 +362,55 @@ def test_importance_ties_break_by_activity_then_created(board, admin, area):
     conn.close()
     listing = admin.ok("GET", "/api/threads", params={"sort": "importance"})
     assert [t["id"] for t in listing["threads"]] == [a, b, c]
+
+
+def _hot_setup(board, admin, specs):
+    """specs: list of (area_id, title, op score, idle days). Returns thread ids in order."""
+    ids = []
+    for area_id, title, score, idle_days in specs:
+        made = admin.make_thread(area_id, title)
+        tid, op = made["thread"]["id"], made["thread"]["op_message_id"]
+        if score:
+            admin.ok("POST", f"/api/messages/{op}/votes", {"delta": score})
+        conn = sqlite3.connect(board.path)
+        conn.execute(
+            "UPDATE threads SET last_activity_at = strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now', ?) WHERE id = ?",
+            (f"-{idle_days} days", tid),
+        )
+        conn.commit()
+        conn.close()
+        ids.append(tid)
+    return ids
+
+
+def _hot(admin, **params):
+    return admin.ok("GET", "/api/threads", params={"sort": "hot", **params})
+
+
+def test_hot_fresh_zero_beats_idle_score_one(board, admin, area):
+    idle, fresh = _hot_setup(board, admin, [(area["id"], "idle", 1, 3), (area["id"], "fresh", 0, 0)])
+    assert [t["id"] for t in _hot(admin)["threads"]] == [fresh, idle]
+
+
+def test_hot_high_score_beats_fresh_zero(board, admin, area):
+    fresh, strong = _hot_setup(board, admin, [(area["id"], "fresh", 0, 0), (area["id"], "strong", 5, 1)])
+    assert [t["id"] for t in _hot(admin)["threads"]] == [strong, fresh]
+
+
+def test_hot_includes_pinned_and_spans_areas(board, admin, area):
+    other = admin.make_area("Other")
+    a, b = _hot_setup(board, admin, [(area["id"], "pinned", 0, 0), (other["id"], "plain", 5, 0)])
+    admin.ok("PUT", f"/api/threads/{a}/pin", {"pinned": True})
+    data = _hot(admin)
+    assert data["pinned"] == []
+    assert [t["id"] for t in data["threads"]] == [b, a]
+    assert {t["area_id"] for t in data["threads"]} == {area["id"], other["id"]}
+
+
+def test_hot_paging(board, admin, area):
+    ids = _hot_setup(board, admin, [(area["id"], f"t{i}", 0, i) for i in range(5)])
+    first = _hot(admin, limit=2)
+    assert [t["id"] for t in first["threads"]] == ids[:2] and first["has_more"]
+    last = _hot(admin, limit=2, offset=4)
+    assert [t["id"] for t in last["threads"]] == ids[4:] and not last["has_more"]
+    assert [t["id"] for t in _hot(admin, order="asc")["threads"]] == ids[::-1]

@@ -52,13 +52,17 @@ Thread summary:
  importance (= OP score only), op_message_id, message_count,
  pending_attention (viewer's unacknowledged messages in this thread; 0 when closed)}
 ```
-- `GET /api/threads?area_id=&state=active|closed|all&sort=created|activity|importance&order=desc|asc&limit=100&offset=0`
+- `GET /api/threads?area_id=&state=active|closed|all&sort=created|activity|importance|hot&order=desc|asc&limit=100&offset=0`
   -> `{pinned:[summary], threads:[summary], has_more}`. `pinned` is a separate group (not paginated,
   same sort) and excluded from `threads`; `offset`/`limit` page only `threads`, `has_more` says
   whether a next page exists (clients render `pinned` from the first page only). Default
   `state=active`, `sort=importance` (OP score; `created`/`activity` are explicit choices), `order=desc`
   (`asc` = oldest/least first). Ties: `importance` -> last activity, then created, then id;
   `activity`/`created` -> id; all in the same direction.
+  `sort=hot` ranks by `op.score - 2.0 * log2(1 + MAX(0, idle_days))`. `idle_days` is the time since
+  `last_activity_at`. Score matters most. Each +2 score keeps the rank while (1 + idle days) doubles.
+  Ties go to last activity, then id. For `hot`, pins are not split out: `pinned` is `[]` and `threads`
+  includes the pinned threads. Omit `area_id` to rank all areas.
   Closed threads appear only with `state=closed|all`.
 - `POST /api/threads` `{area_id, title (1-200), body (1-20000), attachment_ids?}` -> 201 thread detail.
   Body becomes the OP message; `attachment_ids` (max 10) are linked to it. This is also the migration/creation endpoint for agents.

@@ -406,9 +406,9 @@
     document.getElementById('searchform').classList.toggle('hidden', !me);
     if (!me) return;
     var h = location.hash || '#/';
-    [['#/', 'Areas'], ['#/attention', 'Attention'], ['#/activity', 'Activity'], ['#/users', 'Users']]
+    [['#/', 'Home'], ['#/areas', 'Areas'], ['#/attention', 'Attention'], ['#/activity', 'Activity'], ['#/users', 'Users']]
       .concat(me.is_superadmin ? [['#/admin', 'Admin']] : []).forEach(function (l) {
-        var cur = l[0] === '#/' ? (h === '#/' || h.indexOf('#/area') === 0 || h.indexOf('#/thread') === 0) : h.indexOf(l[0]) === 0;
+        var cur = l[0] === '#/' ? (h === '#/' || h.indexOf('#/?') === 0) : l[0] === '#/areas' ? (h.indexOf('#/area') === 0 || h.indexOf('#/thread') === 0) : h.indexOf(l[0]) === 0;
         nav.appendChild(el('a', { href: l[0], class: cur ? 'cur' : '', 'aria-current': cur ? 'page' : null, text: l[1] }));
       });
     who.appendChild(userTag(me));
@@ -486,7 +486,8 @@
     var params = new URLSearchParams(q);
     var parts = h.split('/').filter(Boolean);
     var fn;
-    if (!parts.length) fn = viewHome;
+    if (!parts.length) fn = function () { return viewHome(params); };
+    else if (parts[0] === 'areas') fn = viewAreas;
     else if (parts[0] === 'area' && parts[1]) fn = function () { return viewArea(parts[1], params); };
     else if (parts[0] === 'thread' && parts[1]) fn = function () { return viewThread(parts[1], params.get('m')); };
     else if (parts[0] === 'context' && parts[1]) fn = function () { return viewContext(parts[1]); };
@@ -534,7 +535,22 @@
     });
     return f;
   }
-  function viewHome() {
+  function viewHome(params) {
+    var HOME_PAGE = 20;
+    var page = Math.max(1, parseInt(params.get('page'), 10) || 1);
+    return api('GET', '/api/threads' + qs({ sort: 'hot', state: 'active', limit: HOME_PAGE, offset: (page - 1) * HOME_PAGE })).then(function (r) {
+      var root = el('div');
+      root.appendChild(el('h1', { text: 'Home' }));
+      if (!r.threads.length) root.appendChild(el('div', { class: 'empty', text: 'No active threads yet.' }));
+      r.threads.forEach(function (t) { root.appendChild(threadRow(t)); });
+      var nav = el('div', { class: 'row' },
+        page > 1 ? el('a', { href: '#/' + (page > 2 ? '?page=' + (page - 1) : ''), text: 'Previous' }) : null,
+        r.has_more ? el('a', { href: '#/?page=' + (page + 1), text: 'Next' }) : null);
+      if (nav.firstChild) root.appendChild(nav);
+      return root;
+    });
+  }
+  function viewAreas() {
     return api('GET', '/api/areas').then(function (r) {
       var root = el('div'); var formSlot = el('div');
       root.appendChild(el('div', { class: 'row' }, el('h1', { class: 'grow', text: 'Areas' }),
@@ -576,7 +592,7 @@
         el('div', null, t.pinned ? el('span', { class: 'badge pin', text: 'pinned' }) : null, ' ',
           t.closed ? el('span', { class: 'badge closed', text: 'closed: ' + t.closed.reason }) : null, ' ',
           link, ' ', modified(t)),
-        el('div', { class: 'mut' }, t.area_name + ' · ', userTag(t.owner), ' · ' + t.message_count + ' msgs · created ' + fmt(t.created_at) + ' · active ' + fmt(t.last_activity_at)),
+        el('div', { class: 'mut' }, el('a', { href: '#/area/' + areaRef(t), text: t.area_name }), ' · ', userTag(t.owner), ' · ' + t.message_count + ' msgs · created ' + fmt(t.created_at) + ' · active ' + fmt(t.last_activity_at)),
         t.pending_attention ? el('span', { class: 'attn', text: t.pending_attention + ' need your attention' }) : null));
     row.thread = t;
     return row;

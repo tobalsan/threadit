@@ -123,7 +123,7 @@ def list_threads(
     request: Request,
     area_id: int | None = None,
     state: Literal["active", "closed", "all"] = "active",
-    sort: Literal["created", "activity", "importance"] = "importance",
+    sort: Literal["created", "activity", "importance", "hot"] = "importance",
     order: Literal["asc", "desc"] = "desc",
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
@@ -138,12 +138,16 @@ def list_threads(
         elif state == "closed":
             clauses.append("t.closed_reason IS NOT NULL")
         base = " AND ".join(clauses) or "1=1"
-        pinned = fetch_threads(
-            conn, user["id"], base + " AND t.pinned = 1", tuple(params), sort, order=order
-        )
-        rest = fetch_threads(
-            conn, user["id"], base + " AND t.pinned = 0", tuple(params), sort, limit + 1, offset, order
-        )
+        if sort == "hot":
+            pinned = []
+            rest = fetch_threads(conn, user["id"], base, tuple(params), sort, limit + 1, offset, order)
+        else:
+            pinned = fetch_threads(
+                conn, user["id"], base + " AND t.pinned = 1", tuple(params), sort, order=order
+            )
+            rest = fetch_threads(
+                conn, user["id"], base + " AND t.pinned = 0", tuple(params), sort, limit + 1, offset, order
+            )
         return {"pinned": pinned, "threads": rest[:limit], "has_more": len(rest) > limit}
 
 

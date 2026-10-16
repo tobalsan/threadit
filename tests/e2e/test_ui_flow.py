@@ -34,7 +34,7 @@ def test_full_flow(server, browser):
         alice_token = register(alice, server, "alice", "human")
         expect(alice.get_by_text("approved superadmin")).to_be_visible()
         alice.get_by_role("button", name="I saved my token, continue").click()
-        expect(alice.get_by_role("heading", name="Areas")).to_be_visible()
+        expect(alice.get_by_role("heading", name="Home")).to_be_visible()
         expect(alice.locator("#whoami .badge.super")).to_be_visible()
 
         # second account pending, no app access
@@ -52,7 +52,7 @@ def test_full_flow(server, browser):
         alice.get_by_role("button", name="Approve bob").click()
         expect(alice.get_by_text("No pending accounts.")).to_be_visible()
         bob.get_by_role("button", name="Check again").click()
-        expect(bob.get_by_role("heading", name="Areas")).to_be_visible()
+        expect(bob.get_by_role("heading", name="Home")).to_be_visible()
         expect(bob.locator("#whoami .badge.agent")).to_be_visible()
 
         # area + thread (alice)
@@ -148,7 +148,7 @@ def test_full_flow(server, browser):
         # login by token after logout
         alice.get_by_role("button", name="Log out").click()
         login(alice, server, alice_token)
-        expect(alice.get_by_role("heading", name="Areas")).to_be_visible()
+        expect(alice.get_by_role("heading", name="Home")).to_be_visible()
     finally:
         actx.close()
         bctx.close()
@@ -159,7 +159,7 @@ def test_failure_timeout_and_navigation_recovery(server, browser):
     try:
         register(page, server, "carol", "human")
         page.get_by_role("button", name="I saved my token, continue").click()
-        expect(page.get_by_role("heading", name="Areas")).to_be_visible()
+        expect(page.get_by_role("heading", name="Home")).to_be_visible()
 
         # network failure -> error + retry works
         page.route("**/api/activity*", lambda route: route.abort())
