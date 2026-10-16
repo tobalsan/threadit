@@ -258,6 +258,15 @@
     });
     return box;
   }
+  // Local draft for a text input: restored on build, saved on input, cleared() after a successful send.
+  function persist(input, key) {
+    var k = 'threaddit:draft:' + (me ? me.id : 0) + ':' + key;
+    try { var saved = localStorage.getItem(k); if (saved !== null) input.value = saved; } catch (e) { /* storage unavailable */ }
+    input.addEventListener('input', function () {
+      try { if (input.value) localStorage.setItem(k, input.value); else localStorage.removeItem(k); } catch (e) { /* storage unavailable */ }
+    });
+    return function cleared() { try { localStorage.removeItem(k); } catch (e) { /* storage unavailable */ } };
+  }
   // File input for thread/message forms: upload() sends not-yet-uploaded files and resolves to all ids.
   // The input sits behind a 📎 toggle; dropTarget(form) accepts files dragged onto the form.
   var pickerSeq = 0;
@@ -610,10 +619,11 @@
     var f = el('form', { class: 'card' }, el('h2', { text: 'New thread in ' + area.name }), field('Title', title, 'th-title'),
       field('Opening post (use @username to notify an agent)', body, 'th-body', mentionable(body)), picker.node, err, el('button', { type: 'submit', class: 'primary', text: 'Create thread' }));
     picker.dropTarget(f);
+    var clearTitle = persist(title, 'thread:' + area.id + ':title'), clearBody = persist(body, 'thread:' + area.id + ':body');
     formSubmit(f, err, function () {
       return picker.upload().then(function (ids) {
         return api('POST', '/api/threads', { area_id: area.id, title: title.value.trim(), body: body.value, attachment_ids: ids });
-      }).then(function (r) { location.hash = '#/thread/' + r.thread.id; });
+      }).then(function (r) { clearTitle(); clearBody(); location.hash = '#/thread/' + r.thread.id; });
     });
     return f;
   }
@@ -637,13 +647,15 @@
     var editing = false;
     var draft = null;
     function editForm() {
-      var ta = el('textarea', { required: true, maxlength: 20000, 'aria-label': 'Edit message' }); ta.value = draft === null ? m.body : draft;
+      var ta = el('textarea', { required: true, maxlength: 20000, 'aria-label': 'Edit message' }); ta.value = m.body;
+      var clearStored = persist(ta, 'edit:' + m.id);
+      if (draft !== null) ta.value = draft;
       ta.addEventListener('input', function () { draft = ta.value; });
       var err = el('div');
       var f = el('form', null, mentionable(ta), err, el('button', { type: 'submit', class: 'primary small', text: 'Save edit' }), ' ',
-        el('button', { type: 'button', class: 'small', text: 'Cancel', onclick: function () { editing = false; draft = null; paint(); } }));
+        el('button', { type: 'button', class: 'small', text: 'Cancel', onclick: function () { editing = false; draft = null; clearStored(); paint(); } }));
       formSubmit(f, err, function () {
-        return api('PATCH', '/api/messages/' + m.id, { body: ta.value }).then(function (nm) { m.body = nm.body; m.edited_at = nm.edited_at; editing = false; draft = null; paint(); });
+        return api('PATCH', '/api/messages/' + m.id, { body: ta.value }).then(function (nm) { m.body = nm.body; m.edited_at = nm.edited_at; editing = false; draft = null; clearStored(); paint(); });
       });
       return f;
     }
@@ -710,12 +722,13 @@
     var err = el('div');
     var f = el('form', null, mentionable(ta), picker.node, err, el('button', { type: 'submit', class: 'primary small', text: 'Post reply' }));
     picker.dropTarget(f);
+    var clearDraft = persist(ta, 'reply:' + parent.thread_id + ':' + parent.id);
     formSubmit(f, err, function () {
       return picker.upload().then(function (ids) {
         var body = { body: ta.value, attachment_ids: ids };
         if (parent !== null && parent.id) body.parent_id = parent.id;
         return api('POST', '/api/threads/' + parent.thread_id + '/messages', body);
-      }).then(done);
+      }).then(function (r) { clearDraft(); return done(r); });
     });
     return f;
   }
@@ -735,9 +748,10 @@
       }
       function titleForm() {
         var input = el('input', { type: 'text', required: true, maxlength: 200, value: t.title, 'aria-label': 'Edit title' });
+        var clearDraft = persist(input, 'title:' + t.id);
         var err = el('div');
-        var f = el('form', { class: 'row' }, input, el('button', { type: 'submit', class: 'primary small', text: 'Save title' }), el('button', { type: 'button', class: 'small', text: 'Cancel', onclick: paintTitle }), err);
-        formSubmit(f, err, function () { return api('PATCH', '/api/threads/' + t.id, { title: input.value.trim() }).then(route); });
+        var f = el('form', { class: 'row' }, input, el('button', { type: 'submit', class: 'primary small', text: 'Save title' }), el('button', { type: 'button', class: 'small', text: 'Cancel', onclick: function () { clearDraft(); paintTitle(); } }), err);
+        formSubmit(f, err, function () { return api('PATCH', '/api/threads/' + t.id, { title: input.value.trim() }).then(function () { clearDraft(); route(); }); });
         return f;
       }
       paintTitle();
@@ -776,8 +790,9 @@
       if (t.closed) ta.disabled = true;
       if (t.closed) { picker.node.querySelector('input').disabled = true; picker.toggle.disabled = true; }
       picker.dropTarget(f);
+      var clearDraft = t.closed ? function () {} : persist(ta, 'top:' + t.id);
       formSubmit(f, errSlot, function () {
-        return picker.upload().then(function (ids) { return api('POST', '/api/threads/' + t.id + '/messages', { body: ta.value, attachment_ids: ids }); }).then(route);
+        return picker.upload().then(function (ids) { return api('POST', '/api/threads/' + t.id + '/messages', { body: ta.value, attachment_ids: ids }); }).then(function () { clearDraft(); route(); });
       });
       root.appendChild(f);
       return root;

@@ -452,3 +452,36 @@ def test_attach_toggle_and_drag_drop_multiple_files(server, browser):
         assert sorted(a["filename"] for a in msgs[-1]["attachments"]) == ["one.txt", "two.txt"]
     finally:
         ctx.close()
+
+
+def test_drafts_survive_reload_and_clear_after_send(server, browser):
+    human, _ = seed_users(server)
+    area = call(server, "POST", "/api/areas", human, {"name": "Drafts", "description": "d"})
+    thread = make_thread(server, human, area["id"], "draft thread")
+    ctx, page = open_page(browser, server, human)
+    try:
+        page.goto(f"{server}/#/thread/{thread['id']}")
+        top = page.get_by_label("Add top-level reply (@username to notify an agent)")
+        top.fill("half-written reply")
+        page.reload()
+        expect(top).to_have_value("half-written reply")
+        page.get_by_role("button", name="Post").click()
+        expect(page.locator(".msg").filter(has_text="half-written reply")).to_have_count(1)
+        page.reload()
+        expect(top).to_have_value("")
+
+        page.goto(f"{server}/#/area/drafts")
+        page.get_by_role("button", name="New thread").click()
+        page.fill("#th-title", "draft title")
+        page.fill("#th-body", "draft body")
+        page.reload()
+        page.get_by_role("button", name="New thread").click()
+        expect(page.locator("#th-title")).to_have_value("draft title")
+        expect(page.locator("#th-body")).to_have_value("draft body")
+        page.get_by_role("button", name="Create thread").click()
+        expect(page.get_by_role("heading", name="draft title")).to_be_visible()
+        page.goto(f"{server}/#/area/drafts")
+        page.get_by_role("button", name="New thread").click()
+        expect(page.locator("#th-title")).to_have_value("")
+    finally:
+        ctx.close()
