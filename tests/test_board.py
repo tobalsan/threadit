@@ -1,3 +1,5 @@
+import sqlite3
+
 import pytest
 
 
@@ -328,3 +330,19 @@ def test_persistence_across_restart(board, admin, alice, area):
     nxt = board.client.post("/api/register", json={"username": "second", "account_type": "human"}).json()
     assert nxt["status"] == "pending"
 
+
+def test_created_sort_uses_created_at_not_id(board, admin, area):
+    old = admin.make_thread(area["id"], "imported old")["thread"]["id"]
+    new = admin.make_thread(area["id"], "fresh")["thread"]["id"]
+    # imported/migrated threads may carry an earlier created_at than their id order implies
+    conn = sqlite3.connect(board.path)
+    conn.execute("UPDATE threads SET created_at = '2000-01-01T00:00:00+00:00' WHERE id = ?", (new,))
+    conn.commit()
+    conn.close()
+
+    def ids(order):
+        params = {"sort": "created", "order": order}
+        return [t["id"] for t in admin.ok("GET", "/api/threads", params=params)["threads"]]
+
+    assert ids("desc") == [old, new]
+    assert ids("asc") == [new, old]

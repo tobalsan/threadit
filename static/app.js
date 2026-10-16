@@ -523,7 +523,7 @@
         el('div', null, t.pinned ? el('span', { class: 'badge pin', text: 'pinned' }) : null, ' ',
           t.closed ? el('span', { class: 'badge closed', text: 'closed: ' + t.closed.reason }) : null, ' ',
           link, ' ', modified(t)),
-        el('div', { class: 'mut' }, t.area_name + ' · ', userTag(t.owner), ' · ' + t.message_count + ' msgs · active ' + fmt(t.last_activity_at)),
+        el('div', { class: 'mut' }, t.area_name + ' · ', userTag(t.owner), ' · ' + t.message_count + ' msgs · created ' + fmt(t.created_at) + ' · active ' + fmt(t.last_activity_at)),
         t.pending_attention ? el('span', { class: 'attn', text: t.pending_attention + ' need your attention' }) : null));
   }
   function viewArea(id, params) {
