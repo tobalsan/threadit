@@ -30,11 +30,13 @@
     <header class="toolbar glass" id="toolbar">
       <div class="bartitle" id="bartitle"></div>
       <span class="sp"></span>
-      <button class="gbtn primary" id="newbtn" type="button" hidden>＋ New thread</button>
+      <button class="gbtn round" id="inspbtn" type="button" aria-pressed="false" aria-label="Toggle inspector" title="Toggle inspector" hidden><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><rect x="2" y="3" width="12" height="10" rx="2.5"/><path d="M10 3v10"/></svg></button>
+      <button class="gbtn primary" id="newbtn" type="button" aria-haspopup="dialog" aria-expanded="false">＋ New thread</button>
     </header>
     <div class="scroll" id="scroll"><main id="main" class="col" tabindex="-1"></main></div>
   </div>
 </div>
+<aside class="insp glass" id="insp" aria-label="Thread inspector" hidden></aside>
 <div id="toast" role="status" aria-live="polite"></div>
 <noscript>Threaddit needs JavaScript.</noscript>
 <script src="/app.js"></script>

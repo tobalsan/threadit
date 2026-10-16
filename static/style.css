@@ -303,6 +303,30 @@ main:has(.with-side){max-width:1180px}
 .with-side .side{position:sticky;top:0}
 .with-side .side h2{margin:0 0 6px}
 
+/* inspector (thread page): glass panel; inner groups are solid */
+.gbtn.round{width:32px;height:32px;padding:0;justify-content:center}
+.insp{position:fixed;right:14px;top:66px;bottom:14px;z-index:25;width:280px;border-radius:26px;padding:16px 16px 76px;overflow:auto;display:flex;flex-direction:column;gap:2px;animation:enter .2s var(--ease);background:var(--glass-strong)}
+.insp h3{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--text2);margin:16px 0 7px;font-weight:750}
+.insp h3:first-child{margin-top:2px}
+.insp .grp{background:var(--card);border-radius:12px;padding:10px 12px;box-shadow:0 0 0 .5px var(--sep);font-size:13.5px}
+.insp .grp p{margin:0}
+.insp .grp .md p{margin:4px 0}
+.insp .ppl{display:flex;gap:10px;align-items:flex-start;padding:6px 0}
+.insp .ppl+.ppl{border-top:.5px solid var(--sep)}
+.insp .ppl small{display:block;color:var(--text2);font-size:12px;line-height:1.35}
+.insp .stack{display:flex;flex-direction:column;gap:6px}
+.insp .stack .gbtn{justify-content:flex-start;border-radius:10px;width:100%}
+.insp .kv{display:flex;justify-content:space-between;font-size:13px;color:var(--text2);padding:2px 0}
+.insp .kv b{color:var(--text);font-weight:600}
+.insp .bigvote{display:flex;justify-content:center}
+.insp .vote.h{padding:3px}
+.insp .vote.h button{min-width:38px;height:32px;font-size:13px}
+.insp .vote.h output{min-width:44px;font-size:24px}
+.insp .attnlist{display:flex;flex-direction:column;gap:4px}
+.insp .attnlist a{color:var(--link);text-decoration:none;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.insp .attnlist a:hover{text-decoration:underline}
+.insp::-webkit-scrollbar{width:0}
+
 /* signed out: the sidebar and the toolbar stay hidden */
 .anon .sidebar,.anon .toolbar{display:none}
 .anon .scroll{padding-top:8vh}

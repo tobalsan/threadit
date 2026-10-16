@@ -272,12 +272,15 @@ def test_symmetric_vote_buttons(server, browser):
     try:
         page.goto(f"{server}/#/thread/{thread['id']}")
         stepper = page.locator(".msgbody .vote").first
+        expect(stepper).to_be_visible()
         labels = stepper.locator("button").all_inner_texts()
         assert labels == ["-5", "-1", "+1", "+5"]
         page.get_by_role("button", name="Vote -5", exact=True).first.click()
         expect(page.get_by_label("score -5").first).to_be_visible()
         page.get_by_role("button", name="Vote -1", exact=True).first.click()
-        expect(page.get_by_text("importance (OP score): -6")).to_be_visible()
+        page.get_by_role("button", name="Toggle inspector").click()
+        expect(page.locator("#insp").get_by_label("Importance score")).to_have_text("-6")
+        page.get_by_role("button", name="Toggle inspector").click()
     finally:
         ctx.close()
 
@@ -933,5 +936,48 @@ def test_composer_is_docked_sends_with_shortcut_and_disables_when_closed(server,
         expect(page.get_by_role("button", name="Send")).to_be_disabled()
         expect(page.get_by_role("button", name="Toggle attachments")).to_be_disabled()
         expect(page.get_by_placeholder("Thread closed: reopen to reply")).to_be_visible()
+    finally:
+        ctx.close()
+
+
+def test_inspector_toggle_sections_and_outside_click(server, browser):
+    human, agent = seed_users(server)
+    area = call(server, "POST", "/api/areas", human, {"name": "Insp", "description": "Area **rules** here"})
+    thread = make_thread(server, human, area["id"], "Inspect me", "hello @agentx")
+    call(server, "POST", f"/api/threads/{thread['id']}/messages", agent, {"body": "reply from agent"})
+    ctx, page = open_page(browser, server, human)
+    try:
+        page.goto(f"{server}/#/thread/{thread['id']}")
+        expect(page.get_by_role("heading", name="Inspect me")).to_be_visible()
+        panel = page.locator("#insp")
+        toggle = page.get_by_role("button", name="Toggle inspector")
+        expect(panel).to_be_hidden()
+        toggle.click()
+        expect(panel).to_be_visible()
+        expect(toggle).to_have_attribute("aria-pressed", "true")
+        for heading in ["Importance", "Attention", "Participants", "Actions", "Details"]:
+            expect(panel.get_by_role("heading", name=heading, exact=True)).to_be_visible()
+        expect(panel.get_by_role("heading", name="Area · Insp")).to_be_visible()
+        expect(panel.locator("strong")).to_have_text("rules")
+        expect(panel.get_by_role("link", name="agentx: reply from agent")).to_have_attribute("href", re.compile(r"\?m=2$"))
+        expect(panel.locator(".ppl").filter(has_text="agentx")).to_contain_text("d")
+        expect(panel.locator(".kv").filter(has_text="Messages")).to_contain_text("2")
+
+        panel.get_by_role("button", name="Importance +5").click()
+        expect(panel.get_by_label("Importance score")).to_have_text("5")
+        expect(page.locator(".msg.op .vscore")).to_have_text("5")
+
+        panel.get_by_role("button", name="Pin").click()
+        expect(panel.get_by_role("button", name="Pinned")).to_be_visible()
+
+        page.mouse.click(300, 300)
+        expect(panel).to_be_hidden()
+        toggle.click()
+        expect(panel).to_be_visible()
+        page.keyboard.press("Escape")
+        expect(panel).to_be_hidden()
+
+        page.goto(f"{server}/#/")
+        expect(toggle).to_be_hidden()
     finally:
         ctx.close()

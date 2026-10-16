@@ -72,7 +72,9 @@ def test_full_flow(server, browser):
 
         # vote on OP -> importance
         alice.get_by_role("button", name="Vote +5").first.click()
-        expect(alice.get_by_text("importance (OP score): 5")).to_be_visible()
+        alice.get_by_role("button", name="Toggle inspector").click()
+        expect(alice.locator("#insp").get_by_label("Importance score")).to_have_text("5")
+        alice.get_by_role("button", name="Toggle inspector").click()
 
         # bob sees attention, reacts processing, replies nested
         bob.get_by_role("link", name="Attention").click()

@@ -492,7 +492,7 @@
     var who = document.getElementById('whoami');
     clear(who);
     document.body.classList.toggle('anon', !me);
-    if (!me) { clear(document.getElementById('nav')); return; }
+    if (!me) { clear(document.getElementById('nav')); setInspector(null); return; }
     paintNav();
     who.appendChild(el('div', { class: 'me' }, el('div', { class: 'avatar' + (me.account_type === 'agent' ? ' agent' : ''), 'aria-hidden': 'true', text: me.username.charAt(0).toUpperCase() }),
       el('span', null, el('b', { text: me.username }), el('small', null, badge(me.account_type), me.is_superadmin ? el('span', { class: 'badge super', text: 'superadmin' }) : null))));
@@ -508,6 +508,44 @@
     document.getElementById('newbtn').hidden = !newThreadHandler;
   }
   document.getElementById('newbtn').addEventListener('click', function () { if (newThreadHandler) newThreadHandler(); });
+
+  // ---------- inspector ----------
+  // A thread view gives build(panel); the panel stays closed until the toolbar button opens it.
+  var inspBuild = null, inspOpen = false;
+  function paintInspector() {
+    var panel = document.getElementById('insp');
+    var btn = document.getElementById('inspbtn');
+    var open = inspOpen && !!inspBuild;
+    btn.hidden = !inspBuild;
+    btn.setAttribute('aria-pressed', String(open));
+    panel.hidden = !open;
+    if (!open) return;
+    var focused = document.activeElement && panel.contains(document.activeElement) ? document.activeElement.getAttribute('aria-label') : null;
+    clear(panel);
+    inspBuild(panel);
+    if (focused) {
+      var again = Array.prototype.filter.call(panel.querySelectorAll('[aria-label]'), function (n) { return n.getAttribute('aria-label') === focused; })[0];
+      if (again) again.focus();
+    }
+  }
+  function setInspector(build) { inspBuild = build; paintInspector(); }
+  function toggleInspector() { if (!inspBuild) return; inspOpen = !inspOpen; paintInspector(); }
+  function closeInspector(refocus) {
+    if (!inspOpen) return;
+    var panel = document.getElementById('insp');
+    var inside = panel.contains(document.activeElement);
+    inspOpen = false; paintInspector();
+    if (refocus && inside) document.getElementById('inspbtn').focus();
+  }
+  document.getElementById('inspbtn').addEventListener('click', toggleInspector);
+  document.addEventListener('mousedown', function (ev) {
+    if (!inspOpen || document.getElementById('insp').contains(ev.target) || document.getElementById('inspbtn').contains(ev.target)
+      || ev.target.closest('.pop,.tapback,.scrim,.sheet,#lightbox,#toast')) return;
+    closeInspector(false);
+  });
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Escape' && !document.getElementById('lightbox')) closeInspector(true);
+  });
 
   // ---------- auth screens ----------
   function viewAuth(note) {
@@ -579,6 +617,7 @@
     var params = new URLSearchParams(q);
     var parts = h.split('/').filter(Boolean);
     setToolbar(PAGE_TITLES[parts[0] || ''] || 'Threaddit');
+    setInspector(null);
     refreshAttentionCount();
     var fn;
     if (!parts.length) fn = function () { return viewHome(params); };
@@ -598,6 +637,7 @@
         if (id !== navId) return;
         clear(main); if (node) main.appendChild(node);
         if (node && node.pageTitle) setToolbar(node.pageTitle, node.onNewThread);
+        if (node && node.inspector) setInspector(node.inspector);
         var tgt = main.querySelector('.target');
         if (tgt) tgt.scrollIntoView({ block: 'center' }); else { document.getElementById('scroll').scrollTop = 0; main.focus({ preventScroll: true }); }
       }).catch(function (e) {
@@ -938,6 +978,7 @@
       body.appendChild(foot);
     }
     paint();
+    if (m.is_op) ctx.repaintOp = paint;
     node.kids.forEach(function (k) { kids.appendChild(renderMsgNode(k, ctx, depth + 1, links)); });
     wrap.appendChild(body); wrap.appendChild(replySlot); wrap.appendChild(kids);
     return wrap;
@@ -967,9 +1008,12 @@
   // ---------- thread ----------
   function viewThread(id, targetParam) {
     return api('GET', '/api/threads/' + encodeURIComponent(id)).then(function (d) {
+      return Promise.all([loadUsers(), api('GET', '/api/areas/' + d.thread.area_id).catch(function () { return null; })]).then(function (extra) { return [d, extra[0], extra[1]]; });
+    }).then(function (rs) {
+      var d = rs[0], users = rs[1], area = rs[2];
       var t = d.thread;
       var root = el('div', { class: 'screen' });
-      var ctx = { closed: !!t.closed, targetId: targetParam ? Number(targetParam) : null, added: function () { route(); } };
+      var ctx = { closed: !!t.closed, targetId: targetParam ? Number(targetParam) : null, added: function () { route(); }, onOpScore: function () { paintInspector(); } };
       var titleSlot = el('div');
       var isOwner = me.id === t.owner.id;
       function paintTitle() {
@@ -989,24 +1033,26 @@
         return f;
       }
       paintTitle();
-      var impl = el('span', { text: 'importance (OP score): ' + t.importance });
-      ctx.onOpScore = function (v) { impl.textContent = 'importance (OP score): ' + v; };
       var replyTotal = Math.max(0, d.messages.length - 1);
       root.appendChild(el('div', { class: 'thead' },
         el('div', { class: 'crumb' }, el('a', { href: '#/area/' + areaRef(t), text: t.area_name })),
         titleSlot,
         el('div', { class: 'tmeta' }, el('span', null, 'by ', userTag(t.owner)), el('span', { text: 'Thread #' + t.id }),
           el('span', { title: 'Last activity ' + fmt(t.last_activity_at), text: ago(t.last_activity_at) }),
-          el('span', { text: replyTotal + (replyTotal === 1 ? ' reply' : ' replies') }), impl)));
+          el('span', { text: replyTotal + (replyTotal === 1 ? ' reply' : ' replies') }))));
       var controls = el('div', { class: 'owner' });
-      if (isOwner) {
-        controls.appendChild(el('button', { type: 'button', class: 'gbtn pin', 'aria-pressed': String(!!t.pinned), disabled: !!t.closed, title: t.pinned ? 'Unpin' : 'Pin to top', text: t.pinned ? '📌 Pinned' : '📌 Pin', onclick: function (ev) {
-          act(ev.currentTarget, function () { return api('PUT', '/api/threads/' + t.id + '/pin', { pinned: !t.pinned }).then(route); }); } }));
+      function pinButton() {
+        return el('button', { type: 'button', class: 'gbtn pin', 'aria-pressed': String(!!t.pinned), disabled: !!t.closed, title: t.pinned ? 'Unpin' : 'Pin to top', text: t.pinned ? '📌 Pinned' : '📌 Pin', onclick: function (ev) {
+          act(ev.currentTarget, function () { return api('PUT', '/api/threads/' + t.id + '/pin', { pinned: !t.pinned }).then(route); }); } });
       }
+      function reopenButton() {
+        return el('button', { type: 'button', class: 'gbtn primary', text: 'Reopen thread', onclick: function (ev) {
+          act(ev.currentTarget, function () { return api('POST', '/api/threads/' + t.id + '/reopen').then(route); }); } });
+      }
+      if (isOwner) controls.appendChild(pinButton());
       if (t.closed) {
         root.appendChild(el('div', { class: 'notice' }, 'Closed (' + t.closed.reason + ') by ' + t.closed.by + ' on ' + fmt(t.closed.at) + '. Read-only: reopen to post, vote, react or pin. '));
-        controls.appendChild(el('button', { type: 'button', class: 'gbtn primary', text: 'Reopen thread', onclick: function (ev) {
-          act(ev.currentTarget, function () { return api('POST', '/api/threads/' + t.id + '/reopen').then(route); }); } }));
+        controls.appendChild(reopenButton());
       } else {
         controls.appendChild(el('button', { type: 'button', class: 'gbtn', 'aria-haspopup': 'menu', 'aria-expanded': 'false', text: 'Close thread ▾', onclick: function (ev) {
           var btn = ev.currentTarget;
@@ -1040,6 +1086,53 @@
         return picker.upload().then(function (ids) { return api('POST', '/api/threads/' + t.id + '/messages', { body: ta.value, attachment_ids: ids }); }).then(function () { clearDraft(); route(); });
       });
       root.appendChild(f);
+      root.inspector = function (panel) {
+        var closed = !!t.closed;
+        panel.appendChild(el('h3', { text: 'Importance' }));
+        if (opNode) {
+          var stepper = el('div', { class: 'vote h', role: 'group', 'aria-label': 'Importance (OP score)' });
+          DELTAS.forEach(function (dl) {
+            stepper.appendChild(el('button', { type: 'button', disabled: closed, 'aria-label': 'Importance ' + (dl > 0 ? '+' : '') + dl, text: (dl > 0 ? '+' : '') + dl, onclick: function (ev) {
+              act(ev.currentTarget, function () {
+                return api('POST', '/api/messages/' + opNode.m.id + '/votes', { delta: dl }).then(function (r) { opNode.m.score = r.score; if (ctx.repaintOp) ctx.repaintOp(); paintInspector(); });
+              });
+            } }));
+            if (dl === -1) stepper.appendChild(el('output', { 'aria-label': 'Importance score', text: String(opNode.m.score) }));
+          });
+          panel.appendChild(el('div', { class: 'bigvote' }, stepper));
+        }
+        panel.appendChild(el('h3', { text: 'Area · ' + t.area_name }));
+        panel.appendChild(el('div', { class: 'grp' }, area && area.description ? renderMarkdown(area.description) : el('p', { class: 'mut', text: '(no description)' })));
+        var pending = d.messages.filter(function (m) { return m.my_attention && m.my_attention.status === 'unacknowledged'; });
+        panel.appendChild(el('h3', { text: 'Attention' }));
+        panel.appendChild(el('div', { class: 'grp attnlist' }, pending.length ? pending.map(function (m) {
+          return el('a', { href: '#/thread/' + t.id + '?m=' + m.id, text: m.author.username + ': ' + m.body.replace(/\s+/g, ' ').slice(0, 60) });
+        }) : el('p', { text: 'Nothing pending for you.' })));
+        panel.appendChild(el('h3', { text: 'Participants' }));
+        var seen = {}, people = el('div', { class: 'grp' });
+        d.messages.forEach(function (m) {
+          if (seen[m.author.id]) return;
+          seen[m.author.id] = true;
+          var u = users.filter(function (x) { return x.id === m.author.id; })[0];
+          people.appendChild(el('div', { class: 'ppl' }, el('span', { class: 'avatar' + (m.author.account_type === 'agent' ? ' agent' : ''), 'aria-hidden': 'true', text: m.author.username.charAt(0).toUpperCase() }),
+            el('div', null, who(m.author), u && u.description ? el('small', { text: u.description }) : null)));
+        });
+        panel.appendChild(people);
+        panel.appendChild(el('h3', { text: 'Actions' }));
+        var actions = el('div', { class: 'stack' });
+        if (isOwner) actions.appendChild(pinButton());
+        if (closed) actions.appendChild(reopenButton());
+        else ['completed', 'archived'].forEach(function (r) {
+          actions.appendChild(el('button', { type: 'button', class: 'gbtn', text: 'Close as ' + r, onclick: function (ev) {
+            act(ev.currentTarget, function () { return api('POST', '/api/threads/' + t.id + '/close', { reason: r }).then(route); }); } }));
+        });
+        panel.appendChild(actions);
+        panel.appendChild(el('h3', { text: 'Details' }));
+        panel.appendChild(el('div', { class: 'grp' },
+          el('div', { class: 'kv' }, 'Created', el('b', { text: fmt(t.created_at) })),
+          el('div', { class: 'kv' }, 'Last activity', el('b', { text: fmt(t.last_activity_at) })),
+          el('div', { class: 'kv' }, 'Messages', el('b', { text: String(d.messages.length) }))));
+      };
       return root;
     });
   }
