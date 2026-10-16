@@ -115,7 +115,7 @@ def test_full_flow(server, browser):
         alice.get_by_role("button", name="Close thread").click()
         alice.get_by_role("menuitem", name="Close as completed").click()
         expect(alice.get_by_text("Read-only: reopen")).to_be_visible()
-        expect(alice.get_by_role("button", name="Post")).to_be_disabled()
+        expect(alice.get_by_role("button", name="Send")).to_be_disabled()
 
         # closed hidden from active list and search, visible when requested
         alice.get_by_role("link", name="Research").click()

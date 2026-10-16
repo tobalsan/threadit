@@ -1026,10 +1026,12 @@
       root.appendChild(el('h2', { text: replyCount ? 'Replies (' + replyCount + ')' : 'Replies' }));
       if (!replyCount) root.appendChild(el('div', { class: 'empty', text: 'No replies yet' }));
       replies.forEach(function (n) { root.appendChild(renderMsgNode(n, ctx, 0, true)); });
-      var errSlot = el('div'); var ta = el('textarea', { required: true, maxlength: 20000 });
+      var errSlot = el('div', { class: 'compose-err' });
+      var ta = el('textarea', { required: true, maxlength: 20000, id: 'top-reply', rows: 1, 'aria-label': 'Add top-level reply (@username to notify an agent)',
+        placeholder: t.closed ? 'Thread closed: reopen to reply' : 'Reply to the thread… type @ to mention' });
       var picker = filePicker();
-      var f = el('form', { class: 'card' }, field(t.closed ? 'Thread closed: reopen to reply' : 'Add top-level reply (@username to notify an agent)', ta, 'top-reply', mentionable(ta)), picker.node, errSlot,
-        el('button', { type: 'submit', class: 'primary', disabled: !!t.closed, text: 'Post' }));
+      var f = el('form', { class: 'compose glass' }, mentionable(ta), picker.node, errSlot,
+        el('button', { type: 'submit', class: 'gbtn primary', disabled: !!t.closed, text: 'Send', title: 'Send (Cmd/Ctrl+Enter)' }));
       if (t.closed) ta.disabled = true;
       if (t.closed) { picker.node.querySelector('input').disabled = true; picker.toggle.disabled = true; }
       picker.dropTarget(f);

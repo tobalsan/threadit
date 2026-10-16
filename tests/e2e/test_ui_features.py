@@ -195,12 +195,12 @@ def test_attachments_thumbnail_lightbox_and_download(server, browser):
         assert dl.value.suggested_filename == "notes.txt"
 
         # reply with an attachment
-        reply = page.locator("form.card").filter(has_text="Add top-level reply")
+        reply = page.locator("form.compose")
         page.fill("#top-reply", "second")
         reply.locator("input[type=file]").set_input_files(
             [{"name": "again.png", "mimeType": "image/png", "buffer": PNG}]
         )
-        reply.get_by_role("button", name="Post", exact=True).click()
+        reply.get_by_role("button", name="Send", exact=True).click()
         expect(page.get_by_role("button", name="Open image again.png")).to_be_visible()
         page.goto(f"{server}/#/context/2")
         expect(page.get_by_role("button", name="Open image again.png")).to_be_visible()
@@ -429,7 +429,7 @@ def test_attach_toggle_and_drag_drop_multiple_files(server, browser):
     ctx, page = open_page(browser, server, human)
     try:
         page.goto(f"{server}/#/thread/{thread['id']}")
-        form = page.locator("form.card").filter(has_text="Add top-level reply")
+        form = page.locator("form.compose")
         picker = form.get_by_label("Attach files (max 10, 10 MB each)")
         toggle = form.get_by_role("button", name="Toggle attachments")
         expect(picker).to_be_hidden()
@@ -444,7 +444,7 @@ def test_attach_toggle_and_drag_drop_multiple_files(server, browser):
         expect(form.get_by_text("two.txt (1 B)")).to_be_visible()
         expect(form).not_to_have_class(re.compile("dragover"))
         form.locator("textarea").fill("dropped files")
-        form.get_by_role("button", name="Post").click()
+        form.get_by_role("button", name="Send").click()
         expect(page.get_by_role("link", name="one.txt")).to_be_visible()
         msgs = call(server, "GET", f"/api/threads/{thread['id']}", human)["messages"]
         assert sorted(a["filename"] for a in msgs[-1]["attachments"]) == ["one.txt", "two.txt"]
@@ -463,7 +463,7 @@ def test_drafts_survive_reload_and_clear_after_send(server, browser):
         top.fill("half-written reply")
         page.reload()
         expect(top).to_have_value("half-written reply")
-        page.get_by_role("button", name="Post").click()
+        page.get_by_role("button", name="Send").click()
         expect(page.locator(".msg").filter(has_text="half-written reply")).to_have_count(1)
         page.reload()
         expect(top).to_have_value("")
@@ -889,5 +889,49 @@ def test_message_card_head_stepper_react_popover_and_reply(server, browser):
         page.get_by_label("Reply to agentx").fill("nested answer")
         page.get_by_role("button", name="Post reply").click()
         expect(page.locator(".children .msgbody").filter(has_text="nested answer")).to_be_visible()
+    finally:
+        ctx.close()
+
+
+def test_composer_is_docked_sends_with_shortcut_and_disables_when_closed(server, browser):
+    human, agent = seed_users(server)
+    area = call(server, "POST", "/api/areas", human, {"name": "Dock", "description": "d"})
+    thread = make_thread(server, human, area["id"], "Dock thread")
+    for i in range(14):
+        call(server, "POST", f"/api/threads/{thread['id']}/messages", human, {"body": f"filler reply {i}"})
+    ctx, page = open_page(browser, server, human)
+    try:
+        page.goto(f"{server}/#/thread/{thread['id']}")
+        composer = page.locator("form.compose")
+        expect(composer).to_be_visible()
+        assert composer.evaluate("e => getComputedStyle(e).backdropFilter") != "none"
+        viewport_h = page.evaluate("window.innerHeight")
+        box = composer.bounding_box()
+        assert viewport_h - (box["y"] + box["height"]) < 40, box
+        page.locator("#scroll").evaluate("e => e.scrollTop = 0")
+        box = composer.bounding_box()
+        assert viewport_h - (box["y"] + box["height"]) < 40, box
+
+        # @ autocomplete opens above the docked capsule and fills the name
+        top = page.get_by_label("Add top-level reply (@username to notify an agent)")
+        top.fill("hello @agent")
+        option = page.locator(".mention-item").first
+        expect(option).to_be_visible()
+        assert option.bounding_box()["y"] < composer.bounding_box()["y"]
+        option.click()
+        expect(top).to_have_value("hello @agentx ")
+
+        # Cmd/Ctrl+Enter sends, the draft clears
+        top.press("ControlOrMeta+Enter")
+        expect(page.locator(".msg").filter(has_text="hello @agentx")).to_have_count(1)
+        expect(top).to_have_value("")
+
+        # closed thread: the composer is disabled
+        call(server, "POST", f"/api/threads/{thread['id']}/close", human, {"reason": "completed"})
+        page.reload()
+        expect(page.get_by_label("Add top-level reply (@username to notify an agent)")).to_be_disabled()
+        expect(page.get_by_role("button", name="Send")).to_be_disabled()
+        expect(page.get_by_role("button", name="Toggle attachments")).to_be_disabled()
+        expect(page.get_by_placeholder("Thread closed: reopen to reply")).to_be_visible()
     finally:
         ctx.close()
