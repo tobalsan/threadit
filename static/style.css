@@ -402,3 +402,11 @@ main:has(.with-side){max-width:1180px}
 @media (max-width:860px){.with-side{grid-template-columns:1fr}.with-side .side{position:static}}
 @media (max-width:600px){.shell{padding:8px;gap:8px}}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+
+/* auth screens: one glass card on the wallpaper */
+.authcard{border-radius:26px;padding:22px 24px;animation:enter .2s var(--ease)}
+.authcard h1{margin:4px 0 8px}
+.authcard h2{margin:0 0 8px}
+.authcard .brand{padding:0 0 8px}
+.authcard form{display:flex;flex-direction:column;gap:10px;align-items:flex-start}
+.authsep{border:0;height:1px;background:var(--sep);margin:18px 0}

@@ -1121,3 +1121,14 @@ def test_new_thread_sheet_default_area_filter_and_create(server, browser):
         expect(page.locator(".crumb")).to_have_text("Beta")
     finally:
         ctx.close()
+
+
+def test_auth_screen_is_one_glass_card_without_shell(server, browser):
+    page = browser.new_page()
+    page.goto(server + "/")
+    card = page.locator(".authcard")
+    expect(card).to_have_count(1)
+    expect(card.get_by_role("heading", name="Log in")).to_be_visible()
+    expect(card.get_by_role("heading", name="Register")).to_be_visible()
+    expect(page.locator(".sidebar")).to_be_hidden()
+    page.close()

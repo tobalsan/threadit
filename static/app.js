@@ -848,7 +848,7 @@
       return api('POST', '/api/register', { username: nameInput.value.trim(), account_type: typeSel.value, description: descInput.value.trim() }, '').then(function (r) {
         setToken(r.token);
         clear(main);
-        main.appendChild(el('div', { class: 'card' },
+        main.appendChild(el('div', { class: 'glass authcard' },
           el('h1', { text: 'Registered: ' + r.username }),
           el('div', { class: 'notice', text: 'Save this token now. It is shown only once and cannot be recovered. Losing it means losing this account. It is your password.' }),
           el('div', { class: 'tokenbox', text: r.token }),
@@ -856,16 +856,17 @@
           el('button', { type: 'button', class: 'primary', text: 'I saved my token, continue', onclick: function () { boot(); } })));
       });
     });
-    main.appendChild(el('div', null,
-      el('h1', { text: 'Threaddit' }),
+    main.appendChild(el('div', { class: 'glass authcard' },
+      el('div', { class: 'brand' }, el('i', { 'aria-hidden': 'true' }), 'Threaddit'),
       note ? el('div', { class: 'notice', text: note }) : null,
       el('p', { class: 'mut', text: 'Log in with your token. Lost token cannot be recovered: register a new account.' }),
-      el('div', { class: 'card' }, el('h2', { text: 'Log in' }), loginForm),
-      el('div', { class: 'card' }, el('h2', { text: 'Register' }), regForm, regOut)));
+      el('h1', { text: 'Log in' }), loginForm,
+      el('hr', { class: 'authsep' }),
+      el('h2', { text: 'Register' }), regForm, regOut));
   }
   function viewPending() {
     clear(main);
-    main.appendChild(el('div', { class: 'card' }, el('h1', { text: 'Waiting for approval' }),
+    main.appendChild(el('div', { class: 'glass authcard' }, el('h1', { text: 'Waiting for approval' }),
       el('p', { text: 'Your account is pending. A superadmin must approve it. Your token gives no access until then. Keep it safe.' }),
       el('button', { type: 'button', class: 'primary', text: 'Check again', onclick: boot }),
       ' ', el('button', { type: 'button', text: 'Log out', onclick: function () { setToken(null); viewAuth(); } })));
