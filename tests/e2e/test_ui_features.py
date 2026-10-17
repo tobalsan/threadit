@@ -99,6 +99,7 @@ def test_mention_autocomplete(server, browser):
     ctx, page = open_page(browser, server, human)
     try:
         page.goto(f"{server}/#/thread/{thread['id']}")
+        page.get_by_role("button", name="Reply to thread").click()
         box = page.locator("#top-reply")
         pop = page.get_by_role("listbox", name="Mention suggestions")
         box.click()
@@ -196,6 +197,7 @@ def test_attachments_thumbnail_lightbox_and_download(server, browser):
 
         # reply with an attachment
         reply = page.locator("form.compose")
+        page.get_by_role("button", name="Reply to thread").click()
         page.fill("#top-reply", "second")
         reply.locator("input[type=file]").set_input_files(
             [{"name": "again.png", "mimeType": "image/png", "buffer": PNG}]
@@ -507,6 +509,7 @@ def test_drafts_survive_reload_and_clear_after_send(server, browser):
     ctx, page = open_page(browser, server, human)
     try:
         page.goto(f"{server}/#/thread/{thread['id']}")
+        page.get_by_role("button", name="Reply to thread").click()
         top = page.get_by_label("Add top-level reply (@username to notify an agent)")
         top.fill("half-written reply")
         page.reload()
@@ -585,6 +588,7 @@ def test_cmd_enter_submits_message_and_edit(server, browser):
     ctx, page = open_page(browser, server, human)
     try:
         page.goto(f"{server}/#/thread/{thread['id']}")
+        page.get_by_role("button", name="Reply to thread").click()
         top = page.get_by_label("Add top-level reply (@username to notify an agent)")
         top.fill("sent with keys")
         top.press("Meta+Enter")
@@ -957,6 +961,15 @@ def test_composer_is_docked_sends_with_shortcut_and_disables_when_closed(server,
     ctx, page = open_page(browser, server, human)
     try:
         page.goto(f"{server}/#/thread/{thread['id']}")
+        # the composer starts hidden behind the "Reply to thread" button; Esc hides it again
+        opener = page.get_by_role("button", name="Reply to thread")
+        top = page.get_by_label("Add top-level reply (@username to notify an agent)")
+        expect(top).to_be_hidden()
+        opener.click()
+        expect(top).to_be_focused()
+        top.press("Escape")
+        expect(top).to_be_hidden()
+        opener.click()
         composer = page.locator("form.compose")
         expect(composer).to_be_visible()
         assert composer.evaluate("e => getComputedStyle(e).backdropFilter") != "none"
@@ -968,7 +981,6 @@ def test_composer_is_docked_sends_with_shortcut_and_disables_when_closed(server,
         assert viewport_h - (box["y"] + box["height"]) < 40, box
 
         # @ autocomplete opens above the docked capsule and fills the name
-        top = page.get_by_label("Add top-level reply (@username to notify an agent)")
         top.fill("hello @agent")
         option = page.locator(".mention-item").first
         expect(option).to_be_visible()
@@ -981,13 +993,11 @@ def test_composer_is_docked_sends_with_shortcut_and_disables_when_closed(server,
         expect(page.locator(".msg").filter(has_text="hello @agentx")).to_have_count(1)
         expect(top).to_have_value("")
 
-        # closed thread: the composer is disabled
+        # closed thread: the reply button is disabled
         call(server, "POST", f"/api/threads/{thread['id']}/close", human, {"reason": "completed"})
         page.reload()
-        expect(page.get_by_label("Add top-level reply (@username to notify an agent)")).to_be_disabled()
-        expect(page.get_by_role("button", name="Send")).to_be_disabled()
-        expect(page.get_by_role("button", name="Toggle attachments")).to_be_disabled()
-        expect(page.get_by_placeholder("Thread closed: reopen to reply")).to_be_visible()
+        expect(opener).to_be_disabled()
+        expect(top).to_be_hidden()
     finally:
         ctx.close()
 
@@ -1383,6 +1393,7 @@ def test_reply_composer_refresh_area_cancel_and_activity_timeline(server, browse
         expect(page.get_by_role("button", name="📌 Pinned")).to_be_visible()
         assert page.evaluate("window.flashes") == 0
         # the docked composer grows to ten lines, then scrolls
+        page.get_by_role("button", name="Reply to thread").click()
         top = page.locator("#top-reply")
         top.fill("\n".join(f"line {i}" for i in range(13)))
         assert top.evaluate("e => e.getBoundingClientRect().height") == 214
@@ -1702,6 +1713,7 @@ def test_c_shortcut_and_create_thread_palette_action(server, browser):
         page.goto(f"{server}/#/thread/{thread['id']}")
         expect(page.locator("h1.ttitle")).to_have_text("Shortcut test")
         # typing "c" in a text field types it, and opens nothing
+        page.get_by_role("button", name="Reply to thread").click()
         top = page.locator("#top-reply")
         top.click()
         page.keyboard.type("c")

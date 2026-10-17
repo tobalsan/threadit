@@ -162,6 +162,7 @@ def test_owner_pin_section_and_failed_actions_keep_ui_usable(server, browser):
         expect(page.get_by_label("score 1").first).to_be_visible()
 
         page.route("**/api/threads/*/messages", lambda route: route.abort() if route.request.method == "POST" else route.continue_())
+        page.get_by_role("button", name="Reply to thread").click()
         page.fill("#top-reply", "will fail")
         page.get_by_role("button", name="Send", exact=True).click()
         expect(page.get_by_role("alert")).to_contain_text("Network error")

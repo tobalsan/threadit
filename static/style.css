@@ -230,11 +230,22 @@ h1.ttitle{font-size:30px;font-weight:800;letter-spacing:-.028em;line-height:1.15
 .pop .cap{font-size:11px;color:var(--text2);padding:4px 11px;font-weight:650}
 
 /* docked composer: sticky measures from the content box, so the thread page drops the bottom padding */
-.scroll:has(.compose.dock){padding-bottom:6px;display:flex;flex-direction:column}
-.scroll:has(.compose.dock)>.col{flex:1 0 auto;width:100%}
-.col>.screen:has(>.compose.dock){flex:1 0 auto}
+.scroll:has(.tdock){padding-bottom:6px;display:flex;flex-direction:column}
+.scroll:has(.tdock)>.col{flex:1 0 auto;width:100%}
+.col>.screen:has(>.tdock){flex:1 0 auto}
+/* thread reply dock: the top padding keeps the top-level reply clear of the last message; pill and capsule float over the list */
+.tdock{position:sticky;z-index:5;bottom:6px;margin-top:auto;padding-top:22px;display:flex;justify-content:center;pointer-events:none}
+.tdock>*{pointer-events:auto}
+.replyfab{all:unset;pointer-events:auto;box-sizing:border-box;background:var(--glass-strong);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);box-shadow:inset 0 1px 0 var(--spec),inset 0 -1px 0 var(--edge),0 0 0 .5px var(--ring),var(--shadow);display:inline-flex;align-items:center;gap:7px;padding:9px 18px 9px 14px;margin-bottom:4px;border-radius:999px;font-size:14px;font-weight:650;letter-spacing:-.01em;color:var(--link);cursor:pointer;transition:transform .2s cubic-bezier(.3,1.5,.5,1),filter .15s;animation:enter .2s var(--ease)}
+.replyfab svg{width:17px;height:17px;flex:none}
+.replyfab:hover{filter:brightness(1.12)}
+.replyfab:active{transform:scale(.95)}
+.replyfab:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.replyfab:disabled{color:var(--text2);cursor:default;filter:none;transform:none}
+.compose.dock:not([hidden]){animation:dockin .22s var(--ease)}
+@keyframes dockin{from{opacity:0;transform:translateY(10px) scale(.97)}to{opacity:1;transform:none}}
 .compose{width:100%;border-radius:22px;padding:6px 6px 6px 8px;display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;background:var(--card2);box-shadow:inset 0 0 0 .5px var(--sep)}
-.compose.dock{position:sticky;z-index:5;bottom:6px;max-width:720px;margin:auto auto 0;border-radius:24px;background:var(--glass-strong);box-shadow:inset 0 1px 0 var(--spec),inset 0 -1px 0 var(--edge),0 0 0 .5px var(--ring),var(--shadow)}
+.compose.dock{max-width:720px;border-radius:24px;background:var(--glass-strong);box-shadow:inset 0 1px 0 var(--spec),inset 0 -1px 0 var(--edge),0 0 0 .5px var(--ring),var(--shadow)}
 .compose.inline{margin-top:10px}
 .compose .mwrap{flex:1;min-width:0;align-self:center}
 .compose textarea,.compose textarea:focus{display:block;height:34px;min-height:34px;max-height:214px;margin:0;resize:none;overflow-y:auto;border:0;background:transparent;box-shadow:none;padding:7px 6px;line-height:20px;outline:0}

@@ -1554,11 +1554,30 @@
         placeholder: t.closed ? 'Thread closed: reopen to reply' : 'Reply to the thread… type @ to mention',
         onSend: function (body, ids) { return api('POST', '/api/threads/' + t.id + '/messages', { body: body, attachment_ids: ids }).then(function () { refresh(); }); } });
       f.textarea.id = 'top-reply';
-      root.appendChild(f);
+      // Collapsed by default: a floating pill opens the top-level composer. A saved draft opens it at once.
+      var openBtn = el('button', { type: 'button', class: 'replyfab', disabled: !!t.closed, 'aria-expanded': 'false', 'aria-controls': 'top-reply-form',
+        title: t.closed ? 'Thread closed: reopen to reply' : 'Reply to the whole thread', onclick: function () { showReply(true); } },
+        svgIcon('M9 14L4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11'), el('span', { text: 'Reply to thread' }));
+      var hideBtn = el('button', { type: 'button', class: 'gbtn', text: 'Hide', title: 'Hide (Esc), keeps the draft', onclick: function () { showReply(false); openBtn.focus(); } });
+      f.id = 'top-reply-form';
+      f.insertBefore(hideBtn, f.querySelector('button[type=submit]'));
+      f.addEventListener('keydown', function (ev) {
+        if (ev.key !== 'Escape' || ev.defaultPrevented) return;
+        ev.preventDefault(); showReply(false); openBtn.focus();
+      });
+      function showReply(open) {
+        f.hidden = !open; openBtn.hidden = open;
+        openBtn.setAttribute('aria-expanded', String(open));
+        if (open) f.textarea.focus();
+      }
+      var dock = el('div', { class: 'tdock' }, openBtn, f);
+      f.hidden = !f.textarea.value || !!t.closed;
+      openBtn.hidden = !f.hidden;
+      root.appendChild(dock);
       ctx.insertReply = function (node) {
         var none = root.querySelector('.empty');
         if (none) none.remove();
-        root.insertBefore(node, f);
+        root.insertBefore(node, dock);
       };
       root.afterShown = function () { startSessionPoll(ctx); };
       root.inspector = function (panel) {
