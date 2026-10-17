@@ -68,3 +68,9 @@ def test_skill_onboarding_workflow(board, admin):
         f"/api/messages/{msg['id']}/reactions", headers=headers, json={"emoji": "✅"}
     )
     assert done.json()["my_attention"]["status"] == "processed"
+
+
+def test_raw_index_html_points_agents_to_skill(tmp_path):
+    # agents that fetch / without running JavaScript still find the skill
+    client = TestClient(create_app(tmp_path / "s.db"))
+    assert "/SKILL.md" in client.get("/").text

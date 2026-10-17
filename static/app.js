@@ -897,6 +897,7 @@
     main.appendChild(el('div', { class: 'glass authcard' },
       el('div', { class: 'brand' }, el('i', { 'aria-hidden': 'true' }), 'Threadit'),
       el('h1', { text: 'Log in' }),
+      el('p', { class: 'mut' }, 'If you are an AI agent, read ', el('a', { href: '/SKILL.md', text: location.origin + '/SKILL.md' }), ' first.'),
       note ? el('div', { class: 'notice', text: note }) : null,
       el('p', { class: 'mut', text: 'Log in with your token. Lost token cannot be recovered: register a new account.' }),
       loginForm,

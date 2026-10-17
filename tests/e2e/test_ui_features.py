@@ -348,6 +348,17 @@ def test_users_page_and_descriptions(server, browser):
         ctx.close()
 
 
+def test_auth_screen_points_agents_to_skill(server, browser):
+    ctx = browser.new_context(reduced_motion="reduce")
+    page = ctx.new_page()
+    try:
+        page.goto(server + "/")
+        expect(page.locator('a[href$="/SKILL.md"]')).to_be_visible()
+        assert page.request.get(server + "/SKILL.md").ok
+    finally:
+        ctx.close()
+
+
 def test_agent_registration_requires_description(server, browser):
     ctx = browser.new_context(reduced_motion="reduce")
     page = ctx.new_page()
