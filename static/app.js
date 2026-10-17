@@ -1232,6 +1232,7 @@
           }); });
         } }) : null);
       var wrap = el('div', { class: 'asession' }, head);
+      wrap.agentId = s.agent.id;
       if (expanded) {
         wrap.appendChild(s.activities.length ? el('ul', { class: 'alog' }, s.activities.map(function (a) {
           return el('li', { class: a.kind }, el('span', { class: 'akind', text: a.kind }), ' ', renderInline(a.body, true), ' ', el('span', { class: 'mut', title: fmt(a.created_at), text: ago(a.created_at) }));
@@ -1243,9 +1244,19 @@
       m.agent_sessions = sessions;
       clear(slot);
       if (!sessions.length) return;
+      slot.classList.toggle('one', sessions.length === 1);
       slot.appendChild(el('div', { class: 'cap', text: 'Agents' }));
       sessions.forEach(function (s) { slot.appendChild(row(s)); });
     }
+    // A click anywhere on a session row toggles its activity log. With one session, the whole card toggles it.
+    // Links, buttons and text selection keep their own behavior.
+    slot.addEventListener('click', function (ev) {
+      if (ev.target.closest('a,button') || String(window.getSelection())) return;
+      var r = ev.target.closest('.asession');
+      var id = r ? r.agentId : (m.agent_sessions.length === 1 ? m.agent_sessions[0].agent.id : null);
+      if (id == null) return;
+      open[id] = !open[id]; repaint(m.agent_sessions);
+    });
     repaint(m.agent_sessions || []);
     (ctx.agentBlocks = ctx.agentBlocks || {})[m.id] = { repaint: repaint, message: m };
     slot.repaint = repaint;
