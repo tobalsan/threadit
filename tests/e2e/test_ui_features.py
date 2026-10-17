@@ -84,7 +84,8 @@ def test_markdown_renders_and_is_xss_safe(server, browser):
         assert page.evaluate("document.querySelectorAll('main a[href^=\"javascript\"]').length") == 0
 
         # editor keeps raw markdown (rendering happens at display time only)
-        page.get_by_role("button", name="Edit", exact=True).first.click()
+        page.get_by_role("button", name="More actions").first.click()
+        page.get_by_role("menuitem", name="Edit").click()
         expect(page.get_by_label("Edit message")).to_have_value(body)
     finally:
         ctx.close()
@@ -224,9 +225,10 @@ def test_editing_and_modified_indicator(server, browser):
     try:
         page.goto(f"{server}/#/thread/{thread['id']}")
         expect(page.get_by_text("(modified)")).to_have_count(0)
-        # only own messages have an Edit button
-        expect(page.get_by_role("button", name="Edit", exact=True)).to_have_count(1)
-        page.get_by_role("button", name="Edit", exact=True).click()
+        # only own messages have a More actions menu (Edit, Delete)
+        expect(page.get_by_role("button", name="More actions")).to_have_count(1)
+        page.get_by_role("button", name="More actions").click()
+        page.get_by_role("menuitem", name="Edit").click()
         page.get_by_label("Edit message").fill("changed **body**")
         page.get_by_role("button", name="Save edit").click()
         msg = page.locator(".msgbody").first
@@ -234,7 +236,8 @@ def test_editing_and_modified_indicator(server, browser):
         expect(msg.get_by_text("(modified)")).to_be_visible()
         assert "Edited" in msg.get_by_text("(modified)").get_attribute("title")
         # cancel leaves text untouched
-        page.get_by_role("button", name="Edit", exact=True).click()
+        page.get_by_role("button", name="More actions").click()
+        page.get_by_role("menuitem", name="Edit").click()
         page.get_by_label("Edit message").fill("nope")
         page.get_by_role("button", name="Cancel").click()
         page.get_by_role("button", name="Keep editing").click()
@@ -254,7 +257,7 @@ def test_editing_and_modified_indicator(server, browser):
         apage.goto(f"{server}/#/thread/{thread['id']}")
         expect(apage.get_by_text("(modified)")).to_have_count(2)
         expect(apage.get_by_role("button", name="Edit title")).to_have_count(0)
-        expect(apage.get_by_role("button", name="Edit", exact=True)).to_have_count(1)  # own message only
+        expect(apage.get_by_role("button", name="More actions")).to_have_count(1)  # own message only
         # list row shows it too
         page.goto(f"{server}/#/area/edits")
         expect(page.locator(".li.thread").get_by_text("(modified)")).to_be_visible()
@@ -262,7 +265,7 @@ def test_editing_and_modified_indicator(server, browser):
         # closed thread: edit buttons disabled
         call(server, "POST", f"/api/threads/{thread['id']}/close", human, {"reason": "completed"})
         page.goto(f"{server}/#/thread/{thread['id']}")
-        expect(page.get_by_role("button", name="Edit", exact=True)).to_have_count(0)
+        expect(page.get_by_role("button", name="More actions")).to_have_count(0)
         expect(page.get_by_role("button", name="Edit title")).to_have_count(0)
         assert other["author"]["username"] == "agentx"
     finally:
@@ -414,7 +417,8 @@ def test_vote_keeps_in_progress_edit_draft(server, browser):
     ctx, page = open_page(browser, server, human)
     try:
         page.goto(f"{server}/#/thread/{thread['id']}")
-        page.get_by_role("button", name="Edit", exact=True).click()
+        page.get_by_role("button", name="More actions").click()
+        page.get_by_role("menuitem", name="Edit").click()
         page.get_by_label("Edit message").fill("my draft")
         page.get_by_role("button", name="Vote +1").first.click()
         expect(page.get_by_label("score 1").first).to_be_visible()
@@ -594,7 +598,8 @@ def test_cmd_enter_submits_message_and_edit(server, browser):
         top.press("Meta+Enter")
         expect(page.locator(".msg").filter(has_text="sent with keys")).to_have_count(1)
         expect(top).to_have_value("")
-        page.locator(".msg").filter(has_text="sent with keys").get_by_role("button", name="Edit").click()
+        page.locator(".msg").filter(has_text="sent with keys").get_by_role("button", name="More actions").click()
+        page.get_by_role("menuitem", name="Edit").click()
         edit = page.get_by_label("Edit message")
         edit.fill("edited with keys")
         edit.press("Control+Enter")
@@ -1477,7 +1482,8 @@ def test_agent_sessions_render_update_live_and_keep_draft(server, browser):
         row = page.locator(".asession")
         expect(row).to_contain_text("agentx")
         expect(row.locator(".schip")).to_have_text("Queued")
-        page.get_by_role("button", name="Edit", exact=True).click()
+        page.get_by_role("button", name="More actions").click()
+        page.get_by_role("menuitem", name="Edit").click()
         page.get_by_label("Edit message").fill("my draft")
         call(server, "POST", f"/api/messages/{op}/reactions", agent, {"emoji": "👀"})
         call(server, "POST", f"/api/messages/{op}/agent-activities", agent, {"kind": "action", "body": "Running **checks**"})
@@ -1547,7 +1553,7 @@ def test_delete_in_another_tab_shows_live_while_agent_works(server, browser):
         call(server, "DELETE", f"/api/messages/{mine['id']}", human)
         expect(card).to_contain_text("message deleted", timeout=8000)
         expect(card).not_to_contain_text("soon gone")
-        expect(card.get_by_role("button", name="Delete")).to_have_count(0)
+        expect(card.get_by_role("button", name="More actions")).to_have_count(0)
     finally:
         ctx.close()
 
@@ -1786,24 +1792,25 @@ def test_delete_own_message_keeps_card_and_replies(server, browser):
     try:
         apage.goto(f"{server}/#/thread/{thread['id']}")
         expect(apage.get_by_text("agent reply stays")).to_be_visible()
-        # an author sees Delete only on their own message
-        expect(apage.get_by_role("button", name="Delete", exact=True)).to_have_count(1)
+        # an author sees the More actions menu only on their own message
+        expect(apage.get_by_role("button", name="More actions")).to_have_count(1)
 
         page.goto(f"{server}/#/thread/{thread['id']}")
-        expect(page.get_by_role("button", name="Delete", exact=True)).to_have_count(1)
-        page.get_by_role("button", name="Delete", exact=True).click()
+        expect(page.get_by_role("button", name="More actions")).to_have_count(1)
+        page.get_by_role("button", name="More actions").click()
+        page.get_by_role("menuitem", name="Delete").click()
         page.get_by_role("button", name="Cancel").click()
         expect(page.get_by_text("original words")).to_be_visible()
         expect(page.get_by_text("message deleted")).to_have_count(0)
 
-        page.get_by_role("button", name="Delete", exact=True).click()
+        page.get_by_role("button", name="More actions").click()
+        page.get_by_role("menuitem", name="Delete").click()
         page.get_by_role("dialog").get_by_role("button", name="Delete", exact=True).click()
         deleted = page.get_by_text("message deleted")
         expect(deleted).to_be_visible()
         expect(deleted).to_have_css("font-style", "italic")
         expect(page.get_by_text("original words")).to_have_count(0)
-        expect(page.get_by_role("button", name="Delete", exact=True)).to_have_count(0)
-        expect(page.get_by_role("button", name="Edit", exact=True)).to_have_count(0)
+        expect(page.get_by_role("button", name="More actions")).to_have_count(0)
         expect(page.get_by_role("button", name="Vote +1")).to_have_count(1)
         expect(page.get_by_text("agent reply stays")).to_be_visible()
         expect(page.get_by_role("heading", name="Delete me")).to_be_visible()

@@ -1386,14 +1386,19 @@
           ex.querySelector('textarea').focus();
         } });
         hov.appendChild(reactBtn); hov.appendChild(rb);
-        if (me.id === m.author.id) hov.appendChild(el('button', { type: 'button', class: 'link', disabled: editing, text: 'Edit', onclick: function () { editing = true; paint(); } }));
-        if (me.id === m.author.id) hov.appendChild(el('button', { type: 'button', class: 'link', disabled: editing, text: 'Delete', onclick: function (ev) {
+        // Edit and Delete sit in a "More actions" menu, only on your own messages
+        if (me.id === m.author.id) hov.appendChild(el('button', { type: 'button', class: 'link more', disabled: editing, 'aria-label': 'More actions', title: 'More actions', 'aria-haspopup': 'menu', 'aria-expanded': 'false', text: '⋯', onclick: function (ev) {
           var btn = ev.currentTarget;
+          openPop(btn, el('div', { class: 'pop', role: 'menu', 'aria-label': 'More actions' },
+            el('button', { type: 'button', role: 'menuitem', text: 'Edit', onclick: function () { closePop(false); editing = true; paint(); } }),
+            el('button', { type: 'button', role: 'menuitem', class: 'del', text: 'Delete', onclick: function () { closePop(false); deleteMsg(btn); } })));
+        } }));
+        function deleteMsg(btn) {
           confirmDialog('Delete message?', 'The card stays and shows "message deleted". You cannot undo this.', 'Cancel', 'Delete', 'danger').then(function (ok) {
             if (!ok) return;
             act(btn, function () { return api('DELETE', '/api/messages/' + m.id).then(function (nm) { m.deleted_at = nm.deleted_at; m.body = ''; m.attachments = []; editing = false; draft = null; clear(replySlot); paint(); changed(); }); });
           });
-        } }));
+        }
         foot.appendChild(hov);
       }
       body.appendChild(foot);

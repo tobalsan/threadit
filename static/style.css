@@ -299,6 +299,9 @@ h1.ttitle{font-size:30px;font-weight:800;letter-spacing:-.028em;line-height:1.15
 .link:hover{background:var(--card2);color:var(--text)}
 .link:focus-visible{outline:2px solid var(--focus)}
 .link:disabled{opacity:.5;cursor:default}
+.link.more{font-size:17px;line-height:18px;padding:2px 9px}
+.pop button.del{color:var(--red)}
+.pop button.del:hover,.pop button.del:focus-visible{background:var(--red);color:#fff}
 .expand{display:grid;grid-template-rows:0fr;transition:grid-template-rows .22s var(--ease)}
 .expand.open{grid-template-rows:1fr}
 .expand>div{overflow:hidden;min-height:0;padding:0 4px 4px;margin:0 -4px -4px}
