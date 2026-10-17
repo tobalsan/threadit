@@ -1486,6 +1486,7 @@ def test_agent_reply_appears_live_and_keeps_reply_draft(server, browser):
         call(server, "POST", f"/api/messages/{op}/reactions", agent, {"emoji": "✅"})
         expect(page.locator(".asession .schip")).to_have_text("Done", timeout=8000)
         expect(page.locator(".children .msg", has_text="agent answer")).to_have_count(1)
+        expect(page.locator(f"#m{op} .rx")).to_have_text(["\u2705 1"])
         expect(page.get_by_label("Reply to hanna")).to_have_value("half written")
     finally:
         ctx.close()

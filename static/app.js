@@ -1260,7 +1260,7 @@
         var sc = document.getElementById('scroll'), top = sc.scrollTop;
         d.messages.slice().sort(function (a, b) { return a.id - b.id; }).forEach(function (nm) {
           var blk = ctx.agentBlocks[nm.id];
-          if (blk) { blk.repaint(nm.agent_sessions || []); return; }
+          if (blk) { blk.repaint(nm.agent_sessions || []); if (blk.refresh) blk.refresh(nm); return; }
           if (nm.is_op || !ctx.insertReply) return;
           var depth = nm.parent_id && ctx.depths[nm.parent_id] !== undefined ? ctx.depths[nm.parent_id] + 1 : 0;
           var host = nm.parent_id ? ctx.kidsOf[nm.parent_id] : null;
@@ -1372,6 +1372,11 @@
     }
     paint();
     if (m.is_op) ctx.repaintOp = paint;
+    // Polling: agents add 👀/✅ while the page is open. Skip while editing to keep focus.
+    ctx.agentBlocks[m.id].refresh = function (nm) {
+      if (editing || JSON.stringify(nm.reactions) === JSON.stringify(m.reactions)) return;
+      m.reactions = nm.reactions; m.my_attention = nm.my_attention; paint();
+    };
     node.kids.forEach(function (k) { kids.appendChild(renderMsgNode(k, ctx, depth + 1, links)); });
     wrap.appendChild(body); wrap.appendChild(replySlot); wrap.appendChild(kids);
     return wrap;
