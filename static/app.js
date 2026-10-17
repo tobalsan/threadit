@@ -1314,13 +1314,14 @@
     function paint() {
       var closed = ctx.closed || !!m.thread_closed_reason;
       var attn = m.my_attention;
-      var pending = !!attn && attn.status === 'unacknowledged';
+      var gone = !!m.deleted_at;
+      var pending = !gone && !!attn && attn.status === 'unacknowledged';
       body.className = 'msgbody msgcard' + (pending ? ' pending' : '');
       clear(body);
       if (m.is_op) body.appendChild(el('div', { class: 'oplabel', text: 'Original post' }));
       // The Attention page gives a slot at the card corner for the check button.
       if (ctx.markSlot) clear(ctx.markSlot);
-      if (ctx.markSlot && attn && (attn.status === 'unacknowledged' || (attn.status === 'processing' && me.account_type === 'agent')) && !closed) {
+      if (ctx.markSlot && !gone && attn && (attn.status === 'unacknowledged' || (attn.status === 'processing' && me.account_type === 'agent')) && !closed) {
         ctx.markSlot.appendChild(el('button', { type: 'button', class: 'markseen', 'aria-label': 'Mark as seen', title: 'Mark as seen', onclick: function (ev) {
           act(ev.currentTarget, function () { return api('POST', '/api/messages/' + m.id + '/reactions', { emoji: '✅' }).then(function (nm) { m.reactions = nm.reactions; m.my_attention = nm.my_attention; paint(); changed(); }); });
         } }, svgIcon(CHECK_PATH)));
@@ -1336,10 +1337,11 @@
         el('span', { class: 'avatar' + (m.author.account_type === 'agent' ? ' agent' : ''), 'aria-hidden': 'true', text: m.author.username.charAt(0).toUpperCase() }),
         who(m.author),
         el('span', { title: fmt(m.created_at), text: ago(m.created_at) }), modified(m),
-        pending ? el('span', { class: 'need', title: 'reason: ' + attn.reason, text: 'Needs you' }) : null,
-        attn && !pending ? el('span', { class: 'mut', title: 'reason: ' + attn.reason, text: 'attention: ' + attn.status }) : null,
+        gone ? null : pending ? el('span', { class: 'need', title: 'reason: ' + attn.reason, text: 'Needs you' }) : null,
+        attn && !pending && !gone ? el('span', { class: 'mut', title: 'reason: ' + attn.reason, text: 'attention: ' + attn.status }) : null,
         links ? el('a', { class: 'ctxlink', href: ctxHref(m), text: 'context' }) : null,
-        el('div', { class: 'vwrap' }, el('span', { class: 'vscore', 'aria-hidden': 'true', title: 'Score', text: String(m.score) }), stepper)));
+        gone ? null : el('div', { class: 'vwrap' }, el('span', { class: 'vscore', 'aria-hidden': 'true', title: 'Score', text: String(m.score) }), stepper)));
+      if (gone) { body.appendChild(el('p', { class: 'deleted', text: 'message deleted' })); return; }
       body.appendChild(editing ? editForm() : renderMarkdown(m.body));
       add(body, attachmentsNode(m));
       if (m.agent_sessions && m.agent_sessions.length) body.appendChild(agentsSlot);
@@ -1385,6 +1387,13 @@
         } });
         hov.appendChild(reactBtn); hov.appendChild(rb);
         if (me.id === m.author.id) hov.appendChild(el('button', { type: 'button', class: 'link', disabled: editing, text: 'Edit', onclick: function () { editing = true; paint(); } }));
+        if (me.id === m.author.id) hov.appendChild(el('button', { type: 'button', class: 'link', disabled: editing, text: 'Delete', onclick: function (ev) {
+          var btn = ev.currentTarget;
+          confirmDialog('Delete message?', 'The card stays and shows "message deleted". You cannot undo this.', 'Cancel', 'Delete', 'danger').then(function (ok) {
+            if (!ok) return;
+            act(btn, function () { return api('DELETE', '/api/messages/' + m.id).then(function (nm) { m.deleted_at = nm.deleted_at; m.body = ''; m.attachments = []; editing = false; draft = null; clear(replySlot); paint(); changed(); }); });
+          });
+        } }));
         foot.appendChild(hov);
       }
       body.appendChild(foot);
@@ -1393,7 +1402,7 @@
     if (m.is_op) ctx.repaintOp = paint;
     // Polling: agents add 👀/✅ while the page is open. Skip while editing to keep focus.
     ctx.agentBlocks[m.id].refresh = function (nm) {
-      if (editing || JSON.stringify(nm.reactions) === JSON.stringify(m.reactions)) return;
+      if (editing || m.deleted_at || JSON.stringify(nm.reactions) === JSON.stringify(m.reactions)) return;
       m.reactions = nm.reactions; m.my_attention = nm.my_attention; paint();
     };
     node.kids.forEach(function (k) { kids.appendChild(renderMsgNode(k, ctx, depth + 1, links)); });
@@ -1661,6 +1670,12 @@
           var inFilter = true;
           var ctx = { closed: false, added: route, markSlot: slot, onAttention: function (nm) {
             refreshAttentionCount();
+            if (nm.deleted_at) {
+              if (inFilter) { inFilter = false; offset -= 1; }
+              box.remove();
+              if (!list.firstChild && !more.firstChild) root.insertBefore(el('div', { class: 'empty', text: 'Nothing here.' }), list);
+              return;
+            }
             var now = nm.my_attention && nm.my_attention.status;
             // Keep the server offset in step when the item leaves or re-enters the filter.
             var nowIn = status === 'all' || now === status;

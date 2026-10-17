@@ -139,6 +139,7 @@ mark{background:rgba(255,204,0,.4);color:inherit;border-radius:3px}
 .who{font-weight:600;color:var(--text)}
 .ag{color:var(--purple);margin-left:3px;font-size:.9em}
 .mut{color:var(--text2);font-size:13px}
+.deleted{font-style:italic;color:var(--text2);opacity:.7;margin:8px 0}
 .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .grow{flex:1;min-width:0}
 

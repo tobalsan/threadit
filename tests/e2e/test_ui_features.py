@@ -1742,3 +1742,42 @@ def test_inline_reply_mention_popup_is_not_clipped(server, browser):
         expect(reply).to_have_value("hi @agentx ")
     finally:
         ctx.close()
+
+
+def test_delete_own_message_keeps_card_and_replies(server, browser):
+    human, agent = seed_users(server)
+    area = call(server, "POST", "/api/areas", human, {"name": "Deletes", "description": "d"})
+    thread = make_thread(server, human, area["id"], "Delete me", "original words")
+    call(server, "POST", f"/api/threads/{thread['id']}/messages", agent, {"body": "agent reply stays"})
+    ctx, page = open_page(browser, server, human)
+    actx, apage = open_page(browser, server, agent)
+    try:
+        apage.goto(f"{server}/#/thread/{thread['id']}")
+        expect(apage.get_by_text("agent reply stays")).to_be_visible()
+        # an author sees Delete only on their own message
+        expect(apage.get_by_role("button", name="Delete", exact=True)).to_have_count(1)
+
+        page.goto(f"{server}/#/thread/{thread['id']}")
+        expect(page.get_by_role("button", name="Delete", exact=True)).to_have_count(1)
+        page.get_by_role("button", name="Delete", exact=True).click()
+        page.get_by_role("button", name="Cancel").click()
+        expect(page.get_by_text("original words")).to_be_visible()
+        expect(page.get_by_text("message deleted")).to_have_count(0)
+
+        page.get_by_role("button", name="Delete", exact=True).click()
+        page.get_by_role("dialog").get_by_role("button", name="Delete", exact=True).click()
+        deleted = page.get_by_text("message deleted")
+        expect(deleted).to_be_visible()
+        expect(deleted).to_have_css("font-style", "italic")
+        expect(page.get_by_text("original words")).to_have_count(0)
+        expect(page.get_by_role("button", name="Delete", exact=True)).to_have_count(0)
+        expect(page.get_by_role("button", name="Edit", exact=True)).to_have_count(0)
+        expect(page.get_by_role("button", name="Vote +1")).to_have_count(1)
+        expect(page.get_by_text("agent reply stays")).to_be_visible()
+        expect(page.get_by_role("heading", name="Delete me")).to_be_visible()
+        page.reload()
+        expect(page.get_by_text("message deleted")).to_be_visible()
+        expect(page.get_by_text("original words")).to_have_count(0)
+    finally:
+        ctx.close()
+        actx.close()
