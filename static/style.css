@@ -492,6 +492,9 @@ button.danger:hover{background:#b80012}
 .markseen svg{width:16px;height:16px}
 .markseen:hover,.markseen:focus-visible{background:#30a14e;color:#fff}
 .card.attncard{position:relative}
+/* the score sits on the card's first row (the thread line), as on the OP card */
+.attncard .msgcard{position:static}
+.attncard>.mut{padding-right:64px}
 .card.attncard:hover .markseen,.markseen:focus-visible{opacity:1}
 @media (hover:none){.markseen{opacity:1}}
 .markall{display:inline-flex;align-items:center;gap:6px;margin-top:6px}
