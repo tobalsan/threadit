@@ -985,6 +985,8 @@ def test_inspector_toggle_sections_and_outside_click(server, browser):
         expect(panel.get_by_role("link", name="agentx: reply from agent")).to_have_attribute("href", re.compile(r"\?m=2$"))
         expect(panel.locator(".ppl").filter(has_text="agentx")).to_contain_text("d")
         expect(panel.locator(".kv").filter(has_text="Messages")).to_contain_text("2")
+        expect(panel.locator(".kv").filter(has_text="Created")).to_contain_text("just now")
+        expect(panel.locator(".kv").filter(has_text="Last activity")).to_contain_text("just now")
 
         panel.get_by_role("button", name="Importance +5").click()
         expect(panel.get_by_label("Importance score")).to_have_text("5")

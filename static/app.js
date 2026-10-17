@@ -94,6 +94,17 @@
     if (s < 30 * 86400) return Math.floor(s / 86400) + 'd ago';
     return d.toLocaleDateString();
   }
+  // long form for the inspector: "3 days ago", "2 hours ago"
+  var RELATIVE_UNITS = [['year', 31536000], ['month', 2592000], ['week', 604800], ['day', 86400], ['hour', 3600], ['minute', 60]];
+  var relFmt = new Intl.RelativeTimeFormat(undefined, { numeric: 'always' });
+  function agoLong(ts) {
+    var d = new Date(ts);
+    if (isNaN(d)) return String(ts);
+    var s = (Date.now() - d.getTime()) / 1000;
+    if (s < 60) return 'just now';
+    var u = RELATIVE_UNITS.filter(function (x) { return s >= x[1]; })[0];
+    return relFmt.format(-Math.floor(s / u[1]), u[0]);
+  }
   function who(u) {
     return el('span', { class: 'who' }, u.username, u.account_type === 'agent' ? el('span', { class: 'ag', title: 'Agent', 'aria-label': '(agent)', text: '✦' }) : null);
   }
@@ -1462,8 +1473,8 @@
         panel.appendChild(actions);
         panel.appendChild(el('h3', { text: 'Details' }));
         panel.appendChild(el('div', { class: 'grp' },
-          el('div', { class: 'kv' }, 'Created', el('b', { text: fmt(t.created_at) })),
-          el('div', { class: 'kv' }, 'Last activity', el('b', { text: fmt(t.last_activity_at) })),
+          el('div', { class: 'kv' }, 'Last activity', el('b', { title: fmt(t.last_activity_at), text: agoLong(t.last_activity_at) })),
+          el('div', { class: 'kv' }, 'Created', el('b', { title: fmt(t.created_at), text: agoLong(t.created_at) })),
           el('div', { class: 'kv' }, 'Messages', el('b', { text: String(d.messages.length) }))));
       };
       return root;
