@@ -413,6 +413,7 @@ def test_file_picker_disabled_during_upload(server, browser):
         held = []
         page.route("**/api/attachments?*", lambda route: held.append(route), times=1)
         page.goto(f"{server}/#/area/up")
+        expect(page.get_by_role("heading", name="Up", exact=True)).to_be_visible()  # area loaded, so the form preselects it
         page.get_by_role("button", name="New thread").click()
         page.get_by_label("Title").fill("with files")
         page.get_by_label("Opening post (use @username to notify an agent)").fill("body")
@@ -490,11 +491,14 @@ def test_drafts_survive_reload_and_clear_after_send(server, browser):
         page.reload()
         expect(top).to_have_value("")
 
+        area_loaded = page.get_by_role("heading", name="Drafts", exact=True)  # drafts are kept per area
         page.goto(f"{server}/#/area/drafts")
+        expect(area_loaded).to_be_visible()
         page.get_by_role("button", name="New thread").click()
         page.fill("#th-title", "draft title")
         page.fill("#th-body", "draft body")
         page.reload()
+        expect(area_loaded).to_be_visible()
         page.get_by_role("button", name="New thread").click()
         expect(page.locator("#th-title")).to_have_value("draft title")
         expect(page.locator("#th-body")).to_have_value("draft body")
