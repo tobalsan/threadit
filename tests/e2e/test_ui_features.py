@@ -1424,3 +1424,48 @@ def test_attention_closed_toggle_and_admin_badge_spacing(server, browser):
         assert card.locator(".badge.super").bounding_box()["x"] - (human_badge["x"] + human_badge["width"]) >= 3
     finally:
         ctx.close()
+
+
+def test_agent_sessions_render_update_live_and_keep_draft(server, browser):
+    human, agent = seed_users(server)
+    area = call(server, "POST", "/api/areas", human, {"name": "Sessions", "description": "d"})
+    thread = make_thread(server, human, area["id"], "S", "hello @agentx")
+    op = thread["op_message_id"]
+    ctx, page = open_page(browser, server, human)
+    try:
+        page.goto(f"{server}/#/thread/{thread['id']}")
+        row = page.locator(".asession")
+        expect(row).to_contain_text("agentx")
+        expect(row.locator(".schip")).to_have_text("Queued")
+        page.get_by_role("button", name="Edit", exact=True).click()
+        page.get_by_label("Edit message").fill("my draft")
+        call(server, "POST", f"/api/messages/{op}/reactions", agent, {"emoji": "👀"})
+        call(server, "POST", f"/api/messages/{op}/agent-activities", agent, {"kind": "action", "body": "Running **checks**"})
+        expect(row.locator(".schip")).to_have_text("Working", timeout=8000)
+        expect(row.locator(".alast")).to_contain_text("Running checks")
+        expect(page.get_by_label("Edit message")).to_have_value("my draft")
+        row.locator(".atoggle").click()
+        expect(page.locator(".alog li")).to_have_count(1)
+        call(server, "POST", f"/api/messages/{op}/reactions", agent, {"emoji": "✅"})
+        expect(row.locator(".schip")).to_have_text("Done", timeout=8000)
+        expect(row.get_by_role("button", name="Stop agentx")).to_have_count(0)
+    finally:
+        ctx.close()
+
+
+def test_agent_session_stop_button(server, browser):
+    human, agent = seed_users(server)
+    area = call(server, "POST", "/api/areas", human, {"name": "Sessions", "description": "d"})
+    thread = make_thread(server, human, area["id"], "S", "hello @agentx")
+    op = thread["op_message_id"]
+    call(server, "POST", f"/api/messages/{op}/reactions", agent, {"emoji": "👀"})
+    ctx, page = open_page(browser, server, human)
+    try:
+        page.goto(f"{server}/#/thread/{thread['id']}")
+        page.get_by_role("button", name="Stop agentx").click()
+        expect(page.locator(".asession .schip")).to_have_text("Stopping")
+        expect(page.get_by_role("button", name="Stop agentx")).to_have_count(0)
+        stopped = call(server, "POST", f"/api/messages/{op}/agent-activities", agent, {"kind": "thought", "body": "x"})
+        assert stopped["stop_requested"]["by"]["username"] == "hanna"
+    finally:
+        ctx.close()

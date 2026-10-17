@@ -934,6 +934,7 @@
     closePop(false);
     renderChrome();
     var id = ++navId;
+    stopSessionPoll();
     if (!soft) releaseBlobs();
     var h = (location.hash || '#/').slice(1);
     var q = '';
@@ -1192,12 +1193,83 @@
     return roots;
   }
   // ctx: {closed:bool, onChange:fn(msg) , reload:fn, targetId}
+  // ---------- agent sessions ----------
+  var SESSION_LABELS = { queued: 'Queued', working: 'Working', needs_input: 'Needs input', error: 'Error', stale: 'Stale', stopping: 'Stopping', done: 'Done', stopped: 'Stopped' };
+  var LIVE_STATES = { queued: true, working: true, stopping: true };
+  var sessionPoll = null;
+  function stopSessionPoll() { if (sessionPoll) { clearInterval(sessionPoll); sessionPoll = null; } }
+  // One "Agents" block per message. repaint(sessions) redraws only this block, so polling keeps drafts, focus and scroll.
+  function agentsBlock(m, ctx) {
+    var slot = el('div', { class: 'agents' });
+    var open = {};
+    function row(s) {
+      var last = s.activities.length ? s.activities[s.activities.length - 1] : null;
+      var finished = s.state === 'done' || s.state === 'stopped';
+      var canStop = me.account_type === 'human' && !ctx.closed && !m.thread_closed_reason && !finished && s.state !== 'stopping';
+      var expanded = !!open[s.agent.id];
+      var head = el('div', { class: 'arow' },
+        el('button', { type: 'button', class: 'link atoggle', 'aria-expanded': String(expanded), title: expanded ? 'Hide activity' : 'Show activity', text: (expanded ? '▾ ' : '▸ ') + s.agent.username, onclick: function () { open[s.agent.id] = !open[s.agent.id]; repaint(m.agent_sessions); } }),
+        el('span', { class: 'schip ' + s.state, text: SESSION_LABELS[s.state] || s.state }),
+        el('span', { class: 'alast' }, last ? renderInline(last.body, true) : null),
+        el('span', { class: 'mut', title: fmt(last ? last.created_at : s.updated_at), text: ago(last ? last.created_at : s.updated_at) }),
+        finished && s.reply_id ? el('a', { href: '#/thread/' + m.thread_id + '?m=' + s.reply_id, text: 'reply' }) : null,
+        canStop ? el('button', { type: 'button', class: 'small', text: 'Stop', 'aria-label': 'Stop ' + s.agent.username, onclick: function (ev) {
+          act(ev.currentTarget, function () { return api('POST', '/api/messages/' + m.id + '/agent-sessions/' + encodeURIComponent(s.agent.username) + '/stop').then(function (ns) {
+            m.agent_sessions = m.agent_sessions.map(function (x) { return x.agent.id === ns.agent.id ? ns : x; });
+            repaint(m.agent_sessions); startSessionPoll(ctx);
+          }); });
+        } }) : null);
+      var wrap = el('div', { class: 'asession' }, head);
+      if (expanded) {
+        wrap.appendChild(s.activities.length ? el('ul', { class: 'alog' }, s.activities.map(function (a) {
+          return el('li', { class: a.kind }, el('span', { class: 'akind', text: a.kind }), ' ', renderInline(a.body, true), ' ', el('span', { class: 'mut', title: fmt(a.created_at), text: ago(a.created_at) }));
+        })) : el('div', { class: 'mut', text: 'No activity yet.' }));
+      }
+      return wrap;
+    }
+    function repaint(sessions) {
+      m.agent_sessions = sessions;
+      clear(slot);
+      if (!sessions.length) return;
+      slot.appendChild(el('div', { class: 'cap', text: 'Agents' }));
+      sessions.forEach(function (s) { slot.appendChild(row(s)); });
+    }
+    repaint(m.agent_sessions || []);
+    (ctx.agentBlocks = ctx.agentBlocks || {})[m.id] = { repaint: repaint, message: m };
+    slot.repaint = repaint;
+    return slot;
+  }
+  function startSessionPoll(ctx) {
+    stopSessionPoll();
+    if (!ctx.threadId) return;
+    function live() {
+      return Object.keys(ctx.agentBlocks || {}).some(function (k) {
+        return (ctx.agentBlocks[k].message.agent_sessions || []).some(function (s) { return LIVE_STATES[s.state]; });
+      });
+    }
+    if (!live()) return;
+    var pollNav = navId, busy = false;
+    sessionPoll = setInterval(function () {
+      if (pollNav !== navId) { stopSessionPoll(); return; }
+      if (busy) return;
+      busy = true;
+      api('GET', '/api/threads/' + ctx.threadId).then(function (d) {
+        if (pollNav !== navId) return;
+        d.messages.forEach(function (nm) {
+          var blk = ctx.agentBlocks[nm.id];
+          if (blk) blk.repaint(nm.agent_sessions || []);
+        });
+        if (!live()) stopSessionPoll();
+      }).catch(function () {}).then(function () { busy = false; });
+    }, 3000);
+  }
   function renderMsgNode(node, ctx, depth, links) {
     var m = node.m;
     var wrap = el('div', { class: 'msg' + (depth === 0 ? ' top' : '') + (m.is_op ? ' op' : '') + (ctx.targetId === m.id ? ' target' : ''), id: 'm' + m.id });
     var body = el('div');
     var kids = el('div', { class: 'children' });
     var replySlot = el('div');
+    var agentsSlot = agentsBlock(m, ctx);
     var editing = false;
     var draft = null;
     function editForm() {
@@ -1239,6 +1311,7 @@
         el('div', { class: 'vwrap' }, el('span', { class: 'vscore', 'aria-hidden': 'true', title: 'Score', text: String(m.score) }), stepper)));
       body.appendChild(editing ? editForm() : renderMarkdown(m.body));
       add(body, attachmentsNode(m));
+      if (m.agent_sessions && m.agent_sessions.length) body.appendChild(agentsSlot);
       var foot = el('div', { class: 'foot' });
       var chips = el('div', { class: 'chips' });
       m.reactions.forEach(function (r) {
@@ -1365,7 +1438,7 @@
       var root = el('div', { class: 'screen' });
       root.areaId = t.area_id;
       root.pageTitle = t.title;
-      var ctx = { closed: !!t.closed, targetId: targetParam ? Number(targetParam) : null, added: function () { refresh(); }, onOpScore: function () { paintInspector(); } };
+      var ctx = { threadId: t.id, closed: !!t.closed, targetId: targetParam ? Number(targetParam) : null, added: function () { refresh(); }, onOpScore: function () { paintInspector(); } };
       var titleSlot = el('div');
       var isOwner = me.id === t.owner.id;
       function paintTitle() {
@@ -1430,6 +1503,7 @@
         onSend: function (body, ids) { return api('POST', '/api/threads/' + t.id + '/messages', { body: body, attachment_ids: ids }).then(function () { refresh(); }); } });
       f.textarea.id = 'top-reply';
       root.appendChild(f);
+      startSessionPoll(ctx);
       root.inspector = function (panel) {
         var closed = !!t.closed;
         panel.appendChild(el('h3', { text: 'Importance' }));

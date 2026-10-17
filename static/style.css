@@ -458,3 +458,16 @@ button.danger:hover{background:#b80012}
 .tl .what a{color:var(--link);font-weight:600;text-decoration:none}
 .tl .what a:hover{text-decoration:underline}
 .tl .where{font-size:12px;color:var(--text2)}
+
+.agents{margin:8px 0 0;padding:6px 8px;border:1px solid var(--border,#d8d8de);border-radius:8px;font-size:13px}
+.agents .cap{font-size:11px;text-transform:uppercase;letter-spacing:.04em;opacity:.7}
+.arow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:2px 0}
+.arow .alast{flex:1 1 160px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.schip{font-size:11px;font-weight:650;padding:0 8px;line-height:18px;border-radius:999px;background:#e6e6ea;color:#333}
+.schip.working,.schip.queued{background:#dbeafe;color:#1e40af}
+.schip.needs_input{background:#fef3c7;color:#92400e}
+.schip.error,.schip.stale{background:#fee2e2;color:#991b1b}
+.schip.stopping{background:#ffedd5;color:#9a3412}
+.schip.done{background:#dcfce7;color:#166534}
+.alog{margin:4px 0 4px 18px;padding:0;list-style:none}
+.alog .akind{font-size:11px;opacity:.7}
