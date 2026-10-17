@@ -965,6 +965,7 @@
         clear(main); if (node) main.appendChild(node);
         if (node && node.pageTitle) setToolbar(node.pageTitle);
         if (node && node.areaId) currentAreaId = node.areaId;
+        if (node && node.afterShown) node.afterShown();
         setInspector(node && node.inspector ? node.inspector : null);
         if (soft) { sc.scrollTo({ top: top, behavior: 'instant' }); return; }
         var tgt = main.querySelector('.target');
@@ -1214,9 +1215,10 @@
         el('span', { class: 'mut', title: fmt(last ? last.created_at : s.updated_at), text: ago(last ? last.created_at : s.updated_at) }),
         finished && s.reply_id ? el('a', { href: '#/thread/' + m.thread_id + '?m=' + s.reply_id, text: 'reply' }) : null,
         canStop ? el('button', { type: 'button', class: 'small', text: 'Stop', 'aria-label': 'Stop ' + s.agent.username, onclick: function (ev) {
+          var stopNav = navId;
           act(ev.currentTarget, function () { return api('POST', '/api/messages/' + m.id + '/agent-sessions/' + encodeURIComponent(s.agent.username) + '/stop').then(function (ns) {
             m.agent_sessions = m.agent_sessions.map(function (x) { return x.agent.id === ns.agent.id ? ns : x; });
-            repaint(m.agent_sessions); startSessionPoll(ctx);
+            repaint(m.agent_sessions); if (stopNav === navId) startSessionPoll(ctx);
           }); });
         } }) : null);
       var wrap = el('div', { class: 'asession' }, head);
@@ -1251,14 +1253,22 @@
     var pollNav = navId, busy = false;
     sessionPoll = setInterval(function () {
       if (pollNav !== navId) { stopSessionPoll(); return; }
-      if (busy) return;
+      if (busy || document.hidden) return;
       busy = true;
       api('GET', '/api/threads/' + ctx.threadId).then(function (d) {
         if (pollNav !== navId) return;
-        d.messages.forEach(function (nm) {
+        var sc = document.getElementById('scroll'), top = sc.scrollTop;
+        d.messages.slice().sort(function (a, b) { return a.id - b.id; }).forEach(function (nm) {
           var blk = ctx.agentBlocks[nm.id];
-          if (blk) blk.repaint(nm.agent_sessions || []);
+          if (blk) { blk.repaint(nm.agent_sessions || []); return; }
+          if (nm.is_op || !ctx.insertReply) return;
+          var depth = nm.parent_id && ctx.depths[nm.parent_id] !== undefined ? ctx.depths[nm.parent_id] + 1 : 0;
+          var host = nm.parent_id ? ctx.kidsOf[nm.parent_id] : null;
+          if (nm.parent_id && !host) return;
+          var node = renderMsgNode({ m: nm, kids: [] }, ctx, depth, true);
+          if (host) host.appendChild(node); else ctx.insertReply(node);
         });
+        sc.scrollTop = top;
         if (!live()) stopSessionPoll();
       }).catch(function () {}).then(function () { busy = false; });
     }, 3000);
@@ -1268,6 +1278,8 @@
     var wrap = el('div', { class: 'msg' + (depth === 0 ? ' top' : '') + (m.is_op ? ' op' : '') + (ctx.targetId === m.id ? ' target' : ''), id: 'm' + m.id });
     var body = el('div');
     var kids = el('div', { class: 'children' });
+    (ctx.kidsOf = ctx.kidsOf || {})[m.id] = kids;
+    (ctx.depths = ctx.depths || {})[m.id] = depth;
     var replySlot = el('div');
     var agentsSlot = agentsBlock(m, ctx);
     var editing = false;
@@ -1503,7 +1515,12 @@
         onSend: function (body, ids) { return api('POST', '/api/threads/' + t.id + '/messages', { body: body, attachment_ids: ids }).then(function () { refresh(); }); } });
       f.textarea.id = 'top-reply';
       root.appendChild(f);
-      startSessionPoll(ctx);
+      ctx.insertReply = function (node) {
+        var none = root.querySelector('.empty');
+        if (none) none.remove();
+        root.insertBefore(node, f);
+      };
+      root.afterShown = function () { startSessionPoll(ctx); };
       root.inspector = function (panel) {
         var closed = !!t.closed;
         panel.appendChild(el('h3', { text: 'Importance' }));

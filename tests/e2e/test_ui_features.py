@@ -1469,3 +1469,51 @@ def test_agent_session_stop_button(server, browser):
         assert stopped["stop_requested"]["by"]["username"] == "hanna"
     finally:
         ctx.close()
+
+
+def test_agent_reply_appears_live_and_keeps_reply_draft(server, browser):
+    human, agent = seed_users(server)
+    area = call(server, "POST", "/api/areas", human, {"name": "Sessions", "description": "d"})
+    thread = make_thread(server, human, area["id"], "S", "hello @agentx")
+    op = thread["op_message_id"]
+    ctx, page = open_page(browser, server, human)
+    try:
+        page.goto(f"{server}/#/thread/{thread['id']}")
+        page.get_by_role("button", name="Reply", exact=True).first.click()
+        page.get_by_label("Reply to hanna").fill("half written")
+        call(server, "POST", f"/api/messages/{op}/reactions", agent, {"emoji": "👀"})
+        call(server, "POST", f"/api/threads/{thread['id']}/messages", agent, {"body": "agent answer", "parent_id": op})
+        call(server, "POST", f"/api/messages/{op}/reactions", agent, {"emoji": "✅"})
+        expect(page.locator(".asession .schip")).to_have_text("Done", timeout=8000)
+        expect(page.locator(".children .msg", has_text="agent answer")).to_have_count(1)
+        expect(page.get_by_label("Reply to hanna")).to_have_value("half written")
+    finally:
+        ctx.close()
+
+
+def test_late_thread_response_does_not_start_polling(server, browser):
+    human, agent = seed_users(server)
+    area = call(server, "POST", "/api/areas", human, {"name": "Sessions", "description": "d"})
+    old = make_thread(server, human, area["id"], "Old", "hello @agentx")
+    other = make_thread(server, human, area["id"], "Other", "plain")
+    ctx, page = open_page(browser, server, human)
+    polled = []
+    held = []
+
+    def slow(route):
+        held.append(route)
+
+    try:
+        page.goto(f"{server}/#/")
+        page.on("request", lambda r: polled.append(r.url) if f"/api/threads/{old['id']}" in r.url and r.method == "GET" else None)
+        page.route(f"**/api/threads/{old['id']}", slow)
+        page.evaluate(f"location.hash = '#/thread/{old['id']}'")
+        while not held:
+            page.wait_for_timeout(50)
+        page.evaluate(f"location.hash = '#/thread/{other['id']}'")
+        expect(page.locator("h1.ttitle")).to_have_text("Other")
+        held[0].continue_()
+        page.wait_for_timeout(7000)
+        assert len(polled) == 1
+    finally:
+        ctx.close()
