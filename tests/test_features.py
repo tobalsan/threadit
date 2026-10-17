@@ -366,3 +366,11 @@ def test_non_ascii_digit_area_ref_is_404(admin):
         for resp in (admin.get(f"/api/areas/{ref}"), admin.call("PATCH", f"/api/areas/{ref}", json={"name": "x"})):
             assert resp.status_code == 404
             assert resp.json()["error"]["code"] == "area_not_found"
+
+
+def test_favicon_served_and_linked(tmp_path):
+    client = TestClient(create_app(tmp_path / "fav.db"))
+    resp = client.get("/favicon.svg")
+    assert resp.status_code == 200 and resp.headers["content-type"].startswith("image/svg+xml")
+    assert 'rel="icon"' in client.get("/").text and "/favicon.svg" in client.get("/").text
+    client.close()
