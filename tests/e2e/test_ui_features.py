@@ -235,6 +235,10 @@ def test_editing_and_modified_indicator(server, browser):
         page.get_by_role("button", name="Edit", exact=True).click()
         page.get_by_label("Edit message").fill("nope")
         page.get_by_role("button", name="Cancel").click()
+        page.get_by_role("button", name="Keep editing").click()
+        expect(page.get_by_label("Edit message")).to_have_value("nope")
+        page.get_by_role("button", name="Cancel").click()
+        page.get_by_role("button", name="Discard").click()
         expect(msg.locator(".md strong")).to_have_text("body")
 
         # thread title
@@ -497,6 +501,7 @@ def test_new_thread_form_cancel_dismisses_and_discards_draft(server, browser):
         page.get_by_role("button", name="New thread").click()
         page.fill("#th-title", "never mind")
         page.get_by_role("button", name="Cancel", exact=True).click()
+        page.get_by_role("button", name="Discard").click()
         expect(page.locator("#th-title")).to_have_count(0)
         page.get_by_role("button", name="New thread").click()
         expect(page.locator("#th-title")).to_have_value("")
@@ -801,6 +806,7 @@ def test_thread_header_pin_toggle_and_close_popover(server, browser):
         field = page.get_by_label("Edit title", exact=True)
         field.fill("Discarded")
         field.press("Escape")
+        page.get_by_role("button", name="Discard").click()
         expect(page.get_by_role("heading", name="Header thread")).to_be_visible()
         page.get_by_role("button", name="Edit title").click()
         field = page.get_by_label("Edit title", exact=True)
@@ -1109,6 +1115,8 @@ def test_new_thread_sheet_default_area_filter_and_create(server, browser):
 
         # create in Beta from Cmd-K; on success go to the new thread
         page.keyboard.press("Escape")
+        page.get_by_role("button", name="Discard").click()
+        expect(sheet).to_have_count(0)
         page.keyboard.press("ControlOrMeta+k")
         page.get_by_role("combobox", name="Search threads, areas, screens and actions").fill("new thread in beta")
         page.get_by_role("option", name=re.compile("^New thread in Beta")).click()
@@ -1305,5 +1313,52 @@ def test_sidebar_footer_is_compact_and_reply_count_uses_icon(server, browser):
         expect(seg.get_by_role("radio")).to_have_count(3)
         expect(seg).to_have_text("")
         assert seg.bounding_box()["y"] > logout.bounding_box()["y"]
+    finally:
+        ctx.close()
+
+
+def test_reply_composer_refresh_area_cancel_and_activity_timeline(server, browser):
+    human, agent = seed_users(server)
+    area = call(server, "POST", "/api/areas", human, {"name": "Flow", "description": "d"})
+    thread = make_thread(server, human, area["id"], "Flow thread", "op body")
+    call(server, "POST", f"/api/threads/{thread['id']}/messages", agent, {"body": "agent note"})
+    ctx, page = open_page(browser, server, human)
+    try:
+        page.goto(f"{server}/#/thread/{thread['id']}")
+        # pin renders in place: no loading text appears
+        page.evaluate("() => { window.flashes = 0; new MutationObserver(() => { if (document.querySelector('#main .loading')) window.flashes++; }).observe(document.getElementById('main'), {childList: true, subtree: true}); }")
+        page.get_by_role("button", name="📌 Pin").click()
+        expect(page.get_by_role("button", name="📌 Pinned")).to_be_visible()
+        assert page.evaluate("window.flashes") == 0
+        # the docked composer grows to five lines, then scrolls
+        top = page.locator("#top-reply")
+        top.fill("\n".join(f"line {i}" for i in range(8)))
+        assert top.evaluate("e => e.getBoundingClientRect().height") == 114
+        # a nested reply uses the same composer; Esc asks before it discards
+        page.get_by_role("button", name="Reply", exact=True).first.click()
+        nested = page.get_by_label("Reply to hanna", exact=True)
+        expect(nested).to_be_focused()
+        nested.fill("draft")
+        nested.press("Escape")
+        page.get_by_role("button", name="Discard").click()
+        expect(page.locator(".compose.inline")).to_have_count(0)
+        page.get_by_role("button", name="Reply", exact=True).first.click()
+        page.get_by_label("Reply to hanna", exact=True).press("Escape")
+        expect(page.locator(".compose.inline")).to_have_count(0)
+        expect(page.locator("dialog.confirm")).to_have_count(0)
+        # the area form has Cancel, with a confirm when it holds changes
+        page.goto(f"{server}/#/area/flow")
+        page.get_by_role("button", name="Edit area").click()
+        page.get_by_label("Name").fill("Changed")
+        page.get_by_role("button", name="Cancel", exact=True).click()
+        page.get_by_role("button", name="Discard").click()
+        expect(page.get_by_label("Name")).to_have_count(0)
+        # activity: a timeline with the date once per day and a time per event
+        page.goto(f"{server}/#/activity")
+        rows = page.locator(".timeline .tl")
+        expect(rows).to_have_count(4)
+        expect(page.locator(".timeline .tl .day")).to_have_count(1)
+        expect(page.locator(".timeline .tl time")).to_have_count(4)
+        expect(page.locator(".timeline .card")).to_have_count(0)
     finally:
         ctx.close()
