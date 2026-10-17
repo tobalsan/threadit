@@ -3,7 +3,7 @@ import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 
-from threaddit.slugs import unique_area_slug
+from threadit.slugs import unique_area_slug
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (

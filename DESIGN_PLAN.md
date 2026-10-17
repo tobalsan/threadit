@@ -1,4 +1,4 @@
-# Design Implementation Plan: Threaddit UI redesign
+# Design Implementation Plan: Threadit UI redesign
 
 ## Summary
 - **Scope:** the full frontend (`static/index.html`, `static/style.css`, `static/app.js`). No API change.

@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 import uvicorn
 
-from threaddit.app import create_app
+from threadit.app import create_app
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -50,16 +50,16 @@ def server(tmp_path):
 
 @pytest.fixture
 def subprocess_server(tmp_path):
-    """Real `python -m threaddit` process, for the entrypoint smoke test."""
+    """Real `python -m threadit` process, for the entrypoint smoke test."""
     port = _free_port()
     env = {
         **os.environ,
-        "THREADDIT_DB": str(tmp_path / "e2e.db"),
-        "THREADDIT_HOST": "127.0.0.1",
-        "THREADDIT_PORT": str(port),
+        "THREADIT_DB": str(tmp_path / "e2e.db"),
+        "THREADIT_HOST": "127.0.0.1",
+        "THREADIT_PORT": str(port),
     }
     proc = subprocess.Popen(
-        [sys.executable, "-m", "threaddit"],
+        [sys.executable, "-m", "threadit"],
         cwd=ROOT,
         env=env,
         stdout=subprocess.DEVNULL,

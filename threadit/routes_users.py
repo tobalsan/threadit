@@ -2,7 +2,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Request
 
-from threaddit.core import (
+from threadit.core import (
     ApiError,
     hash_token,
     new_token,
@@ -10,8 +10,8 @@ from threaddit.core import (
     session,
     user_from_token,
 )
-from threaddit.schemas import LoginIn, MePatch, RegisterIn
-from threaddit.views import user_json
+from threadit.schemas import LoginIn, MePatch, RegisterIn
+from threadit.views import user_json
 
 router = APIRouter()
 

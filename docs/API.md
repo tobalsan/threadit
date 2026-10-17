@@ -1,4 +1,4 @@
-# Threaddit API v0
+# Threadit API v0
 
 Base: same origin, `/api/*`, JSON. Timestamps: ISO-8601 UTC. Ids: integers.
 Auth: `Authorization: Bearer <token>` on everything except `POST /api/register` and

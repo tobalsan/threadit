@@ -3,7 +3,7 @@
   var TIMEOUT_MS = 15000;
   var PAGE = 100;
   var SEARCH_PAGE = 50;
-  var TOKEN_KEY = 'threaddit_token';
+  var TOKEN_KEY = 'threadit_token';
   var UPLOAD_TIMEOUT_MS = 120000;
   var MAX_ATTACHMENTS = 10;
   var MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
@@ -300,7 +300,7 @@
   }
   // Local draft for a text input: restored on build, saved on input, cleared() after a successful send.
   function persist(input, key) {
-    var k = 'threaddit:draft:' + (me ? me.id : 0) + ':' + key;
+    var k = 'threadit:draft:' + (me ? me.id : 0) + ':' + key;
     try { var saved = localStorage.getItem(k); if (saved !== null) input.value = saved; } catch (e) { /* storage unavailable */ }
     input.addEventListener('input', function () {
       try { if (input.value) localStorage.setItem(k, input.value); else localStorage.removeItem(k); } catch (e) { /* storage unavailable */ }
@@ -425,7 +425,7 @@
 
   // ---------- theme ----------
   var SVG_NS = 'http://www.w3.org/2000/svg';
-  var THEME_KEY = 'threaddit:theme';
+  var THEME_KEY = 'threadit:theme';
   var THEMES = [['system', 'System', 'M3 4.5h18v11.5H3zM8.5 20h7M12 16v4'],
     ['light', 'Light', 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4'],
     ['dark', 'Dark', 'M20.5 14.5A8.5 8.5 0 1 1 9.5 3.5a7 7 0 0 0 11 11z']];
@@ -709,7 +709,7 @@
   });
 
   // ---------- new thread sheet ----------
-  var LAST_AREA_KEY = 'threaddit:lastarea';
+  var LAST_AREA_KEY = 'threadit:lastarea';
   var AREA_COLORS = ['orange', 'blue', 'green', 'purple'];
   var currentAreaId = null;
   var sheet = null;
@@ -895,7 +895,7 @@
       });
     });
     main.appendChild(el('div', { class: 'glass authcard' },
-      el('div', { class: 'brand' }, el('i', { 'aria-hidden': 'true' }), 'Threaddit'),
+      el('div', { class: 'brand' }, el('i', { 'aria-hidden': 'true' }), 'Threadit'),
       el('h1', { text: 'Log in' }),
       note ? el('div', { class: 'notice', text: note }) : null,
       el('p', { class: 'mut', text: 'Log in with your token. Lost token cannot be recovered: register a new account.' }),
@@ -940,7 +940,7 @@
     var qi = h.indexOf('?'); if (qi >= 0) { q = h.slice(qi + 1); h = h.slice(0, qi); }
     var params = new URLSearchParams(q);
     var parts = h.split('/').filter(Boolean);
-    if (!soft) { setToolbar(PAGE_TITLES[parts[0] || ''] || 'Threaddit'); setInspector(null); }
+    if (!soft) { setToolbar(PAGE_TITLES[parts[0] || ''] || 'Threadit'); setInspector(null); }
     currentAreaId = null;
     refreshAttentionCount();
     var fn;

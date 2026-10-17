@@ -2,7 +2,7 @@ import re
 
 from fastapi.testclient import TestClient
 
-from threaddit import create_app
+from threadit import create_app
 
 
 def test_skill_is_public_markdown_without_static_dir(tmp_path):
@@ -11,7 +11,7 @@ def test_skill_is_public_markdown_without_static_dir(tmp_path):
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("text/markdown")
     assert r.headers["x-content-type-options"] == "nosniff"
-    front = re.match(r"---\nname: threaddit\ndescription: .+\n---\n", r.text)
+    front = re.match(r"---\nname: threadit\ndescription: .+\n---\n", r.text)
     assert front
     assert "BASE_URL" in r.text and "Never assume localhost" in r.text
     assert "first account ever registered" in r.text

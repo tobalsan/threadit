@@ -3,7 +3,7 @@
 import re
 import sqlite3
 
-from threaddit.core import ApiError
+from threadit.core import ApiError
 
 _MESSAGE_SQL = """
 SELECT m.id, m.thread_id, m.parent_id, m.is_op, m.body, m.created_at, m.score, m.edited_at,

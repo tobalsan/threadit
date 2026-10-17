@@ -477,7 +477,7 @@ wheels = [
 ]
 
 [[package]]
-name = "threaddit"
+name = "threadit"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

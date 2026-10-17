@@ -3,14 +3,14 @@ from typing import Literal
 
 from fastapi import APIRouter, Query, Request
 
-from threaddit.attention import (
+from threadit.attention import (
     RESERVED,
     acknowledge_human,
     agent_reaction_added,
     agent_reaction_removed,
 )
-from threaddit.core import ApiError, now, session
-from threaddit.schemas import (
+from threadit.core import ApiError, now, session
+from threadit.schemas import (
     AreaIn,
     AreaPatch,
     CloseIn,
@@ -22,15 +22,15 @@ from threaddit.schemas import (
     ThreadPatch,
     VoteIn,
 )
-from threaddit.slugs import unique_area_slug
-from threaddit.service import (
+from threadit.slugs import unique_area_slug
+from threadit.service import (
     add_event,
     get_message_row,
     get_thread_row,
     insert_message,
     require_open,
 )
-from threaddit.views import (
+from threadit.views import (
     area_json,
     fetch_messages,
     fetch_threads,

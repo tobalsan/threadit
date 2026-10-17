@@ -1,5 +1,5 @@
 [project]
-name = "threaddit"
+name = "threadit"
 version = "0.1.0"
 description = "Single shared asynchronous board for humans and agents"
 requires-python = ">=3.12"

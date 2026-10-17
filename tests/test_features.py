@@ -2,7 +2,7 @@ import sqlite3
 
 from fastapi.testclient import TestClient
 
-from threaddit import create_app
+from threadit import create_app
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"0" * 20
 
@@ -305,7 +305,7 @@ def test_old_database_is_migrated(tmp_path):
     conn = sqlite3.connect(path)
     conn.executescript(OLD_SCHEMA)
     ts = "2024-01-01T00:00:00+00:00"
-    from threaddit.core import hash_token
+    from threadit.core import hash_token
 
     conn.execute(
         "INSERT INTO users (username, username_key, account_type, status, is_superadmin,"

@@ -3,8 +3,8 @@
 import sqlite3
 from collections.abc import Sequence
 
-from threaddit.attention import acknowledge_human, record_attention
-from threaddit.core import ApiError, now
+from threadit.attention import acknowledge_human, record_attention
+from threadit.core import ApiError, now
 
 
 def add_event(

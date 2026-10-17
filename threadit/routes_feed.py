@@ -2,8 +2,8 @@ from typing import Literal
 
 from fastapi import APIRouter, Query, Request
 
-from threaddit.core import session
-from threaddit.views import fetch_messages
+from threadit.core import session
+from threadit.views import fetch_messages
 
 router = APIRouter()
 

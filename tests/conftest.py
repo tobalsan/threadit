@@ -1,7 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from threaddit import create_app
+from threadit import create_app
 
 
 class Actor:

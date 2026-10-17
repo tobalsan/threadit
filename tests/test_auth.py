@@ -4,7 +4,7 @@ import threading
 import pytest
 from fastapi.testclient import TestClient
 
-from threaddit import create_app
+from threadit import create_app
 
 
 def test_first_registration_is_superadmin_and_returns_token(tmp_path):

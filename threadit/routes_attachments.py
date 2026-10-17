@@ -3,8 +3,8 @@ from urllib.parse import quote
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import Response
 
-from threaddit.core import ApiError, now, session
-from threaddit.views import attachment_json
+from threadit.core import ApiError, now, session
+from threadit.views import attachment_json
 
 router = APIRouter()
 

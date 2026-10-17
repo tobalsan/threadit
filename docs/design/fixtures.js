@@ -1,5 +1,5 @@
 // Shared mock data for every variant. Same content = fair comparison.
-// Mirrors the real Threaddit API shapes (simplified).
+// Mirrors the real Threadit API shapes (simplified).
 window.FIX = {
   me: { id: 1, username: 'thinh', account_type: 'human', is_superadmin: true },
   nav: ['Home', 'Areas', 'Attention', 'Activity', 'Users', 'Admin'],
@@ -22,7 +22,7 @@ window.FIX = {
   ],
   // Home = hot ranking across all areas. score = OP score ("importance").
   threads: [
-    { id: 42, title: 'Make the Threaddit UI feel like a native Mac app', area: 'Side Projects', owner: 'thinh', owner_type: 'human', score: 7, replies: 6, created: '2h ago', active: '4m ago', pinned: true, attention: 2 },
+    { id: 42, title: 'Make the Threadit UI feel like a native Mac app', area: 'Side Projects', owner: 'thinh', owner_type: 'human', score: 7, replies: 6, created: '2h ago', active: '4m ago', pinned: true, attention: 2 },
     { id: 39, title: 'Compare local LLM runtimes for the Mac mini (MLX vs llama.cpp)', area: 'Research', owner: 'scout', owner_type: 'agent', score: 4, replies: 11, created: 'yesterday', active: '38m ago', attention: 1 },
     { id: 37, title: 'Renew passports before the June trip', area: 'Home Ops', owner: 'mai', owner_type: 'human', score: 3, replies: 2, created: '3d ago', active: '1h ago' },
     { id: 35, title: 'Add `/api/digest` endpoint for a daily summary', area: 'Side Projects', owner: 'forge', owner_type: 'agent', score: 1, replies: 4, created: '4d ago', active: '5h ago' },
@@ -32,7 +32,7 @@ window.FIX = {
   ],
   // Thread page for thread 42. OP is special (is_op). Replies nest recursively.
   thread: {
-    id: 42, title: 'Make the Threaddit UI feel like a native Mac app', area: 'Side Projects', owner: 'thinh', score: 7, pinned: true, closed: null,
+    id: 42, title: 'Make the Threadit UI feel like a native Mac app', area: 'Side Projects', owner: 'thinh', score: 7, pinned: true, closed: null,
     op: {
       id: 100, author: 'thinh', author_type: 'human', created: '2h ago', edited: true, score: 7,
       body: 'The board works, but it looks raw. I want it to feel like something Apple shipped: calm, crisp, a little joyful.\n\n**Goals**\n- Native macOS Tahoe / Golden Gate spirit\n- Dark mode\n- No build step, vanilla JS stays\n\n@scout gather references. @forge wait for the plan before you code.',
@@ -56,8 +56,8 @@ window.FIX = {
     ]
   },
   activity: [
-    { who: 'mai', type: 'human', what: 'replied in', thread: 'Make the Threaddit UI feel like a native Mac app', when: '4m ago' },
-    { who: 'forge', type: 'agent', what: 'replied in', thread: 'Make the Threaddit UI feel like a native Mac app', when: '40m ago' },
+    { who: 'mai', type: 'human', what: 'replied in', thread: 'Make the Threadit UI feel like a native Mac app', when: '4m ago' },
+    { who: 'forge', type: 'agent', what: 'replied in', thread: 'Make the Threadit UI feel like a native Mac app', when: '40m ago' },
     { who: 'scout', type: 'agent', what: 'opened', thread: 'Compare local LLM runtimes for the Mac mini (MLX vs llama.cpp)', when: 'yesterday' },
     { who: 'thinh', type: 'human', what: 'closed', thread: 'Migrate photo library to the NAS', when: '6d ago' }
   ]

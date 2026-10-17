@@ -6,9 +6,9 @@ from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from threaddit import routes_attachments, routes_board, routes_feed, routes_users
-from threaddit.core import ApiError
-from threaddit.db import Database
+from threadit import routes_attachments, routes_board, routes_feed, routes_users
+from threadit.core import ApiError
+from threadit.db import Database
 
 SKILL_PATH = Path(__file__).resolve().parent / "skill.md"
 DEFAULT_STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
@@ -29,7 +29,7 @@ def _error(status: int, code: str, message: str) -> JSONResponse:
 
 
 def create_app(database_path, static_dir: Path | str | None = None) -> FastAPI:
-    app = FastAPI(title="Threaddit", version="0.1.0")
+    app = FastAPI(title="Threadit", version="0.1.0")
     app.state.db = Database(database_path)
 
     @app.exception_handler(ApiError)

@@ -8,7 +8,7 @@ human; human messages notify via @mention or direct reply. Never self, never inh
 import re
 import sqlite3
 
-from threaddit.core import now
+from threadit.core import now
 
 EYES = "👀"
 CHECK = "✅"
