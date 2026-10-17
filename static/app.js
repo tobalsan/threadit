@@ -1402,6 +1402,10 @@
     if (m.is_op) ctx.repaintOp = paint;
     // Polling: agents add 👀/✅ while the page is open. Skip while editing to keep focus.
     ctx.agentBlocks[m.id].refresh = function (nm) {
+      if (nm.deleted_at && !m.deleted_at) {
+        m.deleted_at = nm.deleted_at; m.body = ''; m.attachments = []; editing = false; draft = null; clear(replySlot); paint();
+        return;
+      }
       if (editing || m.deleted_at || JSON.stringify(nm.reactions) === JSON.stringify(m.reactions)) return;
       m.reactions = nm.reactions; m.my_attention = nm.my_attention; paint();
     };

@@ -1521,6 +1521,26 @@ def test_agent_reply_appears_live_and_keeps_reply_draft(server, browser):
         ctx.close()
 
 
+def test_delete_in_another_tab_shows_live_while_agent_works(server, browser):
+    human, agent = seed_users(server)
+    area = call(server, "POST", "/api/areas", human, {"name": "Sessions", "description": "d"})
+    thread = make_thread(server, human, area["id"], "S", "hello @agentx")
+    op = thread["op_message_id"]
+    mine = call(server, "POST", f"/api/threads/{thread['id']}/messages", human, {"body": "soon gone"})
+    call(server, "POST", f"/api/messages/{op}/reactions", agent, {"emoji": "👀"})
+    ctx, page = open_page(browser, server, human)
+    try:
+        page.goto(f"{server}/#/thread/{thread['id']}")
+        card = page.locator(f"#m{mine['id']}")
+        expect(card).to_contain_text("soon gone")
+        call(server, "DELETE", f"/api/messages/{mine['id']}", human)
+        expect(card).to_contain_text("message deleted", timeout=8000)
+        expect(card).not_to_contain_text("soon gone")
+        expect(card.get_by_role("button", name="Delete")).to_have_count(0)
+    finally:
+        ctx.close()
+
+
 def test_late_thread_response_does_not_start_polling(server, browser):
     human, agent = seed_users(server)
     area = call(server, "POST", "/api/areas", human, {"name": "Sessions", "description": "d"})
