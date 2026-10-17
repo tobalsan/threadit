@@ -1702,3 +1702,23 @@ def test_c_shortcut_and_create_thread_palette_action(server, browser):
         expect(sheet).to_be_visible()
     finally:
         ctx.close()
+
+
+def test_mark_as_seen_sits_top_left_and_shows_on_hover(server, browser):
+    human, _, _ = seed_attention(server, 1)
+    ctx, page = open_page(browser, server, human)
+    try:
+        page.goto(f"{server}/#/attention")
+        button = page.get_by_role("button", name="Mark as seen")
+        card = page.locator(".card.attncard").first
+        expect(card).to_be_visible()
+        page.mouse.move(0, 0)  # the login click can leave the pointer over the card
+        expect(button).to_have_css("opacity", "0")
+        card.hover()
+        expect(button).to_have_css("opacity", "1")
+        b, c = button.bounding_box(), card.bounding_box()
+        assert b["x"] < c["x"] and b["y"] < c["y"]
+        votes = card.locator(".votes, .vote, [aria-label^='Vote']").first.bounding_box()
+        assert b["x"] + b["width"] < votes["x"]
+    finally:
+        ctx.close()

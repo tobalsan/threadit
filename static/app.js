@@ -1318,8 +1318,10 @@
       body.className = 'msgbody msgcard' + (pending ? ' pending' : '');
       clear(body);
       if (m.is_op) body.appendChild(el('div', { class: 'oplabel', text: 'Original post' }));
-      if (ctx.markable && attn && (attn.status === 'unacknowledged' || (attn.status === 'processing' && me.account_type === 'agent')) && !closed) {
-        body.appendChild(el('button', { type: 'button', class: 'markseen', 'aria-label': 'Mark as seen', title: 'Mark as seen', onclick: function (ev) {
+      // The Attention page gives a slot at the card corner for the check button.
+      if (ctx.markSlot) clear(ctx.markSlot);
+      if (ctx.markSlot && attn && (attn.status === 'unacknowledged' || (attn.status === 'processing' && me.account_type === 'agent')) && !closed) {
+        ctx.markSlot.appendChild(el('button', { type: 'button', class: 'markseen', 'aria-label': 'Mark as seen', title: 'Mark as seen', onclick: function (ev) {
           act(ev.currentTarget, function () { return api('POST', '/api/messages/' + m.id + '/reactions', { emoji: '✅' }).then(function (nm) { m.reactions = nm.reactions; m.my_attention = nm.my_attention; paint(); changed(); }); });
         } }, svgIcon(CHECK_PATH)));
       }
@@ -1654,9 +1656,10 @@
       root.appendChild(list); root.appendChild(more);
       function showPage(page) {
         page.items.forEach(function (m) {
-          var box = el('div', { class: 'card' });
+          var slot = el('div', { class: 'markslot' });
+          var box = el('div', { class: 'card attncard' }, slot);
           var inFilter = true;
-          var ctx = { closed: false, added: route, markable: true, onAttention: function (nm) {
+          var ctx = { closed: false, added: route, markSlot: slot, onAttention: function (nm) {
             refreshAttentionCount();
             var now = nm.my_attention && nm.my_attention.status;
             // Keep the server offset in step when the item leaves or re-enters the filter.

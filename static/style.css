@@ -471,8 +471,11 @@ button.danger:hover{background:#b80012}
 .schip.done{background:#dcfce7;color:#166534}
 .alog{margin:4px 0 4px 18px;padding:0;list-style:none}
 .alog .akind{font-size:11px;opacity:.7}
-.markseen{position:absolute;z-index:2;right:-10px;top:-10px;width:30px;height:30px;padding:0;border-radius:999px;display:grid;place-items:center;border:0;background:var(--card2);color:#30a14e;box-shadow:inset 0 0 0 .5px var(--sep);cursor:pointer}
+.markseen{position:absolute;z-index:2;left:-10px;top:-10px;opacity:0;transition:opacity .12s;width:30px;height:30px;padding:0;border-radius:999px;display:grid;place-items:center;border:0;background:var(--card2);color:#30a14e;box-shadow:inset 0 0 0 .5px var(--sep);cursor:pointer}
 .markseen svg{width:16px;height:16px}
 .markseen:hover,.markseen:focus-visible{background:#30a14e;color:#fff}
+.card.attncard{position:relative}
+.card.attncard:hover .markseen,.markseen:focus-visible{opacity:1}
+@media (hover:none){.markseen{opacity:1}}
 .markall{display:inline-flex;align-items:center;gap:6px;margin-top:6px}
 .markall svg{width:15px;height:15px}
