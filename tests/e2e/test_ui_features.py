@@ -1410,3 +1410,17 @@ def test_search_highlights_term_and_spaces_results(server, browser):
     finally:
         ctx.close()
 
+
+def test_attention_closed_toggle_and_admin_badge_spacing(server, browser):
+    human, _ = seed_users(server)
+    ctx, page = open_page(browser, server, human)
+    try:
+        page.goto(f"{server}/#/attention")
+        page.get_by_label("Include closed threads").check()
+        expect(page).to_have_url(re.compile(r"#/attention\?.*include_closed=true"))
+        page.goto(f"{server}/#/admin")
+        card = page.locator("main .card", has=page.locator(".badge.super"))
+        human_badge = card.locator(".badge.human").bounding_box()
+        assert card.locator(".badge.super").bounding_box()["x"] - (human_badge["x"] + human_badge["width"]) >= 3
+    finally:
+        ctx.close()

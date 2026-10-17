@@ -1518,7 +1518,7 @@
       var sel = el('select', { onchange: function () { location.hash = '#/attention' + qs({ status: sel.value, include_closed: incl ? 'true' : '' }); } },
         statuses.map(function (s) { return el('option', { value: s, text: s, selected: s === status }); }));
       var cb = el('input', { type: 'checkbox', checked: incl, onchange: function () { location.hash = '#/attention' + qs({ status: status, include_closed: cb.checked ? 'true' : '' }); } });
-      root.appendChild(el('div', { class: 'row' }, el('label', { for: 'attn-status', text: 'Status' }), sel, el('label', null, cb, ' include closed threads')));
+      root.appendChild(el('div', { class: 'ctl' }, el('label', { for: 'attn-status', text: 'Status' }), sel, el('label', { class: 'chk' }, cb, 'Include closed threads')));
       sel.id = 'attn-status';
       if (!r.items.length) root.appendChild(el('div', { class: 'empty', text: 'Nothing here.' }));
       var list = el('div', { class: 'list' }); var more = el('div', { class: 'pager' }); var offset = 0;
@@ -1694,7 +1694,7 @@
       });
       root.appendChild(el('h2', { text: 'Approved' }));
       r.users.filter(function (u) { return u.status !== 'pending'; }).forEach(function (u) {
-        root.appendChild(el('div', { class: 'card' }, userTag(u), u.is_superadmin ? el('span', { class: 'badge super', text: 'superadmin' }) : null));
+        root.appendChild(el('div', { class: 'card' }, userTag(u), ' ', u.is_superadmin ? el('span', { class: 'badge super', text: 'superadmin' }) : null));
       });
       return root;
     });
