@@ -589,7 +589,7 @@
   function paletteActions() {
     var dark = document.documentElement.getAttribute('data-theme') === 'dark';
     var out = [];
-    out.push(['New thread', function () { openNewThread(); }]);
+    out.push(['Create thread', function () { openNewThread(); }]);
     if (inspBuild) out.push(['Toggle inspector', toggleInspector]);
     out.push([dark ? 'Switch to light mode' : 'Switch to dark mode', function () { setTheme(dark ? 'light' : 'dark'); }]);
     out.push(['Use system appearance', function () { setTheme('system'); }]);
@@ -646,8 +646,8 @@
         if (s >= 0) put('Actions', BOLT_ICON, a[0], 'Action', a[1], s);
       });
       if (q) areas.forEach(function (a) {
-        var s = fuzzy(q, 'New thread in ' + a.name);
-        if (s >= 0) put('Actions', BOLT_ICON, 'New thread in ' + a.name, 'Action', function () { openNewThread(a.id); }, s);
+        var s = fuzzy(q, 'Create thread in ' + a.name);
+        if (s >= 0) put('Actions', BOLT_ICON, 'Create thread in ' + a.name, 'Action', function () { openNewThread(a.id); }, s);
       });
       if (q) put('Search', 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-3.5-3.5', 'Search for “' + q + '”', 'All results', function () { goHash('#/search' + qs({ q: q })); }, 0);
       var rows = [];
@@ -860,6 +860,14 @@
     if (openList) openDrop(); else title.focus();
   }
   document.getElementById('newbtn').addEventListener('click', function () { if (sheet) closeSheet(true); else openNewThread(); });
+  // "c" creates a thread, except while typing or when an overlay is open.
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key !== 'c' || ev.metaKey || ev.ctrlKey || ev.altKey || ev.repeat || !me || sheet || palette) return;
+    var t = ev.target;
+    if (t.closest && t.closest('input,textarea,select,[contenteditable],dialog,#lightbox,.pop,.tapback')) return;
+    if (document.querySelector('dialog[open],#lightbox')) return;
+    ev.preventDefault(); openNewThread();
+  });
   window.addEventListener('hashchange', function () { closeSheet(false); });
 
   // ---------- auth screens ----------

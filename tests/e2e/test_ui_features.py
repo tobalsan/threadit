@@ -1166,8 +1166,8 @@ def test_new_thread_sheet_default_area_filter_and_create(server, browser):
         page.get_by_role("button", name="Discard").click()
         expect(sheet).to_have_count(0)
         page.keyboard.press("ControlOrMeta+k")
-        page.get_by_role("combobox", name="Search threads, areas, screens and actions").fill("new thread in beta")
-        page.get_by_role("option", name=re.compile("^New thread in Beta")).click()
+        page.get_by_role("combobox", name="Search threads, areas, screens and actions").fill("create thread in beta")
+        page.get_by_role("option", name=re.compile("^Create thread in Beta")).click()
         expect(sheet.get_by_role("button", name="Area: Beta")).to_be_visible()
         page.get_by_label("Title").fill("Made in sheet")
         page.get_by_label("Opening post (use @username to notify an agent)").fill("body text")
@@ -1668,5 +1668,37 @@ def test_mark_as_seen_button_only_on_attention_page(server, browser):
         expect(page.get_by_text("ping 2")).to_be_visible()
         expect(page.get_by_role("button", name="Mark as seen")).to_have_count(0)
         expect(page.get_by_role("button", name="Mark all seen")).to_have_count(0)
+    finally:
+        ctx.close()
+
+
+def test_c_shortcut_and_create_thread_palette_action(server, browser):
+    human, _ = seed_users(server)
+    area = call(server, "POST", "/api/areas", human, {"name": "Lab", "description": "d"})
+    thread = make_thread(server, human, area["id"], "Shortcut test")
+    ctx, page = open_page(browser, server, human)
+    try:
+        sheet = page.get_by_role("dialog", name="New thread")
+        page.goto(f"{server}/#/thread/{thread['id']}")
+        expect(page.locator("h1.ttitle")).to_have_text("Shortcut test")
+        # typing "c" in a text field types it, and opens nothing
+        top = page.locator("#top-reply")
+        top.click()
+        page.keyboard.type("c")
+        expect(top).to_have_value("c")
+        expect(sheet).to_have_count(0)
+        # outside a text field "c" opens the new thread sheet; Cmd/Ctrl+C does not
+        page.locator("h1.ttitle").click()
+        page.keyboard.press("ControlOrMeta+c")
+        expect(sheet).to_have_count(0)
+        page.keyboard.press("c")
+        expect(sheet).to_be_visible()
+        page.keyboard.press("Escape")
+        expect(sheet).to_have_count(0)
+        # the palette action is "Create thread", so "create" finds it
+        page.keyboard.press("ControlOrMeta+k")
+        page.get_by_role("combobox", name="Search threads, areas, screens and actions").fill("create")
+        page.get_by_role("option", name=re.compile("^Create thread")).first.click()
+        expect(sheet).to_be_visible()
     finally:
         ctx.close()
