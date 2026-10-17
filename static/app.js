@@ -1233,7 +1233,7 @@
       var head = el('div', { class: 'arow' },
         el('button', { type: 'button', class: 'link atoggle', 'aria-expanded': String(expanded), title: expanded ? 'Hide activity' : 'Show activity', text: (expanded ? '▾ ' : '▸ ') + s.agent.username, onclick: function () { open[s.agent.id] = !open[s.agent.id]; repaint(m.agent_sessions); } }),
         el('span', { class: 'schip ' + s.state, text: SESSION_LABELS[s.state] || s.state }),
-        el('span', { class: 'alast' }, last ? renderInline(last.body, true) : null),
+        el('span', { class: 'alast' }, last && s.state !== 'done' ? renderInline(last.body, true) : null), // done: the chip says it all
         el('span', { class: 'mut', title: fmt(last ? last.created_at : s.updated_at), text: ago(last ? last.created_at : s.updated_at) }),
         finished && s.reply_id ? el('a', { href: '#/thread/' + m.thread_id + '?m=' + s.reply_id, text: 'reply' }) : null,
         canStop ? el('button', { type: 'button', class: 'small', text: 'Stop', 'aria-label': 'Stop ' + s.agent.username, onclick: function (ev) {

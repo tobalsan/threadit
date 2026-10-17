@@ -1495,6 +1495,9 @@ def test_agent_sessions_render_update_live_and_keep_draft(server, browser):
         call(server, "POST", f"/api/messages/{op}/reactions", agent, {"emoji": "✅"})
         expect(row.locator(".schip")).to_have_text("Done", timeout=8000)
         expect(row.get_by_role("button", name="Stop agentx")).to_have_count(0)
+        # once done, the collapsed row shows no last event next to the chip
+        page.get_by_text("Agents", exact=True).click()
+        expect(row).not_to_contain_text("Running checks")
     finally:
         ctx.close()
 
