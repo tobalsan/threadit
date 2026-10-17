@@ -890,7 +890,7 @@ def test_message_card_head_stepper_react_popover_and_reply(server, browser):
         agent_card.hover()
         agent_card.get_by_role("button", name="Reply", exact=True).click()
         page.get_by_label("Reply to agentx").fill("nested answer")
-        page.get_by_role("button", name="Post reply").click()
+        page.get_by_role("button", name="Send reply").click()
         expect(page.locator(".children .msgbody").filter(has_text="nested answer")).to_be_visible()
     finally:
         ctx.close()

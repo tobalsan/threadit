@@ -355,7 +355,7 @@
         throw e;
       });
     }
-    return { node: el('div', { class: 'attach' }, toggle, panel, list), toggle: toggle, upload: upload, dropTarget: dropTarget };
+    return { node: el('div', { class: 'attach' }, toggle, panel, list), toggle: toggle, upload: upload, dropTarget: dropTarget, count: function () { return files.length; } };
   }
 
   // ---------- @mention autocomplete ----------
@@ -551,7 +551,7 @@
   document.getElementById('inspbtn').addEventListener('click', toggleInspector);
   document.addEventListener('mousedown', function (ev) {
     if (!inspOpen || document.getElementById('insp').contains(ev.target) || document.getElementById('inspbtn').contains(ev.target)
-      || ev.target.closest('.pop,.tapback,.scrim,.sheet,#lightbox,#toast')) return;
+      || ev.target.closest('.pop,.tapback,.scrim,.sheet,#lightbox,#toast,dialog')) return;
     closeInspector(false);
   });
   document.addEventListener('keydown', function (ev) {
@@ -710,7 +710,7 @@
   function rememberArea(id) { try { localStorage.setItem(LAST_AREA_KEY + ':' + me.id, String(id)); } catch (e) { /* storage unavailable */ } }
   function sheetOutside(ev) {
     var btn = document.getElementById('newbtn');
-    if (sheet && !sheet.node.contains(ev.target) && !btn.contains(ev.target) && !ev.target.closest('.scrim,#lightbox,#toast')) closeSheet(false);
+    if (sheet && !sheet.node.contains(ev.target) && !btn.contains(ev.target) && !ev.target.closest('.scrim,#lightbox,#toast,dialog')) closeSheet(false);
   }
   function removeSheet() {
     var s = sheet;
@@ -766,7 +766,7 @@
       el('div', { class: 'fld' }, el('label', { for: 'th-title', text: 'Title' }), title),
       el('div', { class: 'fld' }, el('label', { for: 'th-body', text: 'Opening post (use @username to notify an agent)' }), mentionable(body)),
       picker.node, err,
-      el('div', { class: 'row2' }, el('button', { type: 'button', text: 'Cancel', onclick: function () { clearTitle(); clearBody(); closeSheet(true); } }),
+      el('div', { class: 'row2' }, el('button', { type: 'button', text: 'Cancel', onclick: function () { cancelSheet(); } }),
         el('button', { type: 'submit', class: 'primary', text: 'Create thread ' }, el('kbd', { 'aria-hidden': 'true', text: '⌘↵' }))));
     title.id = 'th-title'; body.id = 'th-body';
     picker.dropTarget(form);
@@ -779,9 +779,9 @@
     title.addEventListener('keydown', function (ev) {
       if (ev.key === 'Enter' && (ev.metaKey || ev.ctrlKey)) { ev.preventDefault(); var b = form.querySelector('button[type=submit]'); if (!b.disabled) form.requestSubmit(); }
     });
-    form.addEventListener('keydown', function (ev) {
-      if (ev.key === 'Escape' && !ev.defaultPrevented) { ev.stopPropagation(); closeSheet(true); }
-    });
+    var cancelSheet = guardedCancel(function () { return title.value.trim() !== '' || body.value.trim() !== '' || picker.count() > 0; },
+      function () { clearTitle(); clearBody(); closeSheet(true); });
+    escCancels(form, cancelSheet);
 
     // searchable area combobox
     var drop = null;
@@ -911,22 +911,25 @@
   }
 
   // ---------- router ----------
+  // refresh(): render the current page again in place (no loading text, no enter animation, same scroll)
+  var softNav = false;
+  function refresh() { softNav = true; route(); }
   function route() {
     if (!me) return;
+    var soft = softNav; softNav = false;
     // close overlays opened before this hash (Back); a late event for an older hash must not close a new one
     if (palette && palette.hash !== location.hash) closePalette(true);
     if (sheet && sheet.hash !== location.hash) closeSheet(false);
     closePop(false);
     renderChrome();
     var id = ++navId;
-    releaseBlobs();
+    if (!soft) releaseBlobs();
     var h = (location.hash || '#/').slice(1);
     var q = '';
     var qi = h.indexOf('?'); if (qi >= 0) { q = h.slice(qi + 1); h = h.slice(0, qi); }
     var params = new URLSearchParams(q);
     var parts = h.split('/').filter(Boolean);
-    setToolbar(PAGE_TITLES[parts[0] || ''] || 'Threaddit');
-    setInspector(null);
+    if (!soft) { setToolbar(PAGE_TITLES[parts[0] || ''] || 'Threaddit'); setInspector(null); }
     currentAreaId = null;
     refreshAttentionCount();
     var fn;
@@ -942,13 +945,16 @@
     else if (parts[0] === 'admin') fn = viewAdmin;
     else fn = function () { return Promise.resolve(el('div', { class: 'empty', text: 'Page not found.' })); };
     function run() {
-      clear(main); main.appendChild(el('div', { class: 'loading', text: 'Loading…' }));
+      var sc = document.getElementById('scroll'), top = sc.scrollTop;
+      if (!soft) { clear(main); main.appendChild(el('div', { class: 'loading', text: 'Loading…' })); }
       Promise.resolve().then(fn).then(function (node) {
         if (id !== navId) return;
+        if (soft && node && node.classList) node.classList.add('noanim');
         clear(main); if (node) main.appendChild(node);
         if (node && node.pageTitle) setToolbar(node.pageTitle);
         if (node && node.areaId) currentAreaId = node.areaId;
-        if (node && node.inspector) setInspector(node.inspector);
+        setInspector(node && node.inspector ? node.inspector : null);
+        if (soft) { sc.scrollTo({ top: top, behavior: 'instant' }); return; }
         var tgt = main.querySelector('.target');
         if (tgt) tgt.scrollIntoView({ block: 'center' }); else { document.getElementById('scroll').scrollTop = 0; main.focus({ preventScroll: true }); }
       }).catch(function (e) {
@@ -966,10 +972,12 @@
     var name = el('input', { type: 'text', required: true, maxlength: 80, value: area ? area.name : '' });
     var desc = el('textarea', { maxlength: 10000 }); desc.value = area ? area.description : '';
     var err = el('div');
+    var guarded = guardedCancel(function () { return name.value !== (area ? area.name : '') || desc.value !== (area ? area.description : ''); }, cancel);
     var f = el('form', { class: 'card' }, el('h2', { text: area ? 'Edit area' : 'New area' }),
       field('Name', name, 'area-name'), field('Description / instructions for this area', desc, 'area-desc'), err,
-      el('div', { class: 'row2' }, el('button', { type: 'button', text: 'Cancel', onclick: cancel }),
+      el('div', { class: 'row2' }, el('button', { type: 'button', text: 'Cancel', onclick: guarded }),
         el('button', { type: 'submit', class: 'primary', text: 'Save' })));
+    escCancels(f, guarded);
     formSubmit(f, err, function () {
       var body = { name: name.value.trim(), description: desc.value };
       return api(area ? 'PATCH' : 'POST', area ? '/api/areas/' + area.id : '/api/areas', body).then(done);
@@ -1187,8 +1195,10 @@
       if (draft !== null) ta.value = draft;
       ta.addEventListener('input', function () { draft = ta.value; });
       var err = el('div');
+      var cancel = guardedCancel(function () { return ta.value !== m.body; }, function () { editing = false; draft = null; clearStored(); paint(); });
       var f = el('form', null, mentionable(ta), err, el('button', { type: 'submit', class: 'primary small', text: 'Save edit' }), ' ',
-        el('button', { type: 'button', class: 'small', text: 'Cancel', onclick: function () { editing = false; draft = null; clearStored(); paint(); } }));
+        el('button', { type: 'button', class: 'small', text: 'Cancel', onclick: cancel }));
+      escCancels(f, cancel);
       formSubmit(f, err, function () {
         return api('PATCH', '/api/messages/' + m.id, { body: ta.value }).then(function (nm) { m.body = nm.body; m.edited_at = nm.edited_at; editing = false; draft = null; clearStored(); paint(); });
       });
@@ -1247,8 +1257,13 @@
         } });
         var rb = el('button', { type: 'button', class: 'link', 'aria-expanded': String(!!replySlot.firstChild), text: 'Reply', onclick: function (ev) {
           var btn = ev.currentTarget;
-          if (replySlot.firstChild) { clear(replySlot); btn.setAttribute('aria-expanded', 'false'); return; }
-          var ex = el('div', { class: 'expand' }, el('div', null, replyForm(m, ctx, function (nm) { clear(replySlot); ctx.added(nm); })));
+          if (replySlot.firstChild) { replySlot.firstChild.form.cancel(); return; }
+          function closeReply() { clear(replySlot); btn.setAttribute('aria-expanded', 'false'); if (document.contains(btn)) btn.focus(); }
+          var rf = composer({ draftKey: 'reply:' + m.thread_id + ':' + m.id, label: 'Reply to ' + m.author.username, sendLabel: 'Send reply',
+            placeholder: 'Reply to ' + m.author.username + '… type @ to mention', onCancel: closeReply,
+            onSend: function (text, ids) { return api('POST', '/api/threads/' + m.thread_id + '/messages', { body: text, attachment_ids: ids, parent_id: m.id }).then(function (nm) { clear(replySlot); ctx.added(nm); }); } });
+          var ex = el('div', { class: 'expand' }, el('div', null, rf));
+          ex.form = rf;
           replySlot.appendChild(ex); btn.setAttribute('aria-expanded', 'true');
           requestAnimationFrame(function () { requestAnimationFrame(function () { ex.classList.add('open'); }); });
           ex.querySelector('textarea').focus();
@@ -1270,20 +1285,62 @@
       : api('POST', '/api/messages/' + m.id + '/reactions', { emoji: emoji });
     return p.then(function (nm) { m.reactions = nm.reactions; m.my_attention = nm.my_attention; m.score = nm.score; paint(); });
   }
-  function replyForm(parent, ctx, done) {
-    var ta = el('textarea', { required: true, maxlength: 20000, 'aria-label': 'Reply to ' + parent.author.username });
-    var picker = filePicker();
-    var err = el('div');
-    var f = el('form', { class: 'replyform' }, mentionable(ta), picker.node, err, el('button', { type: 'submit', class: 'gbtn primary', text: 'Post reply' }));
-    picker.dropTarget(f);
-    var clearDraft = persist(ta, 'reply:' + parent.thread_id + ':' + parent.id);
-    formSubmit(f, err, function () {
-      return picker.upload().then(function (ids) {
-        var body = { body: ta.value, attachment_ids: ids };
-        if (parent !== null && parent.id) body.parent_id = parent.id;
-        return api('POST', '/api/threads/' + parent.thread_id + '/messages', body);
-      }).then(function (r) { clearDraft(); return done(r); });
+  // ---------- cancel guard ----------
+  // A small modal confirm. Resolves true when the user chooses Discard.
+  function confirmDiscard() {
+    return new Promise(function (resolve) {
+      var d;
+      function done(v) { d.close(); d.remove(); resolve(v); }
+      var keep = el('button', { type: 'button', text: 'Keep editing', onclick: function () { done(false); } });
+      d = el('dialog', { class: 'confirm', 'aria-label': 'Discard changes?' },
+        el('h2', { text: 'Discard changes?' }), el('p', { text: 'Your unsaved text and files will be lost.' }),
+        el('div', { class: 'row2' }, keep, el('button', { type: 'button', class: 'danger', text: 'Discard', onclick: function () { done(true); } })));
+      d.addEventListener('cancel', function (ev) { ev.preventDefault(); done(false); });
+      d.addEventListener('keydown', function (ev) { ev.stopPropagation(); });
+      document.body.appendChild(d);
+      d.showModal(); keep.focus();
     });
+  }
+  // Returns a cancel function: it asks first when isDirty() is true.
+  function guardedCancel(isDirty, discard) {
+    return function () {
+      if (!isDirty()) { discard(); return; }
+      confirmDiscard().then(function (ok) { if (ok) discard(); });
+    };
+  }
+  function escCancels(form, cancel) {
+    form.addEventListener('keydown', function (ev) {
+      if (ev.key !== 'Escape' || ev.defaultPrevented) return;
+      ev.preventDefault(); ev.stopPropagation(); cancel();
+    });
+  }
+  // The textarea grows with its text up to COMPOSE_MAX_PX (5 lines), then scrolls.
+  var COMPOSE_MAX_PX = 5 * 20 + 14;
+  function autosize(ta) {
+    function fit() { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, COMPOSE_MAX_PX) + 'px'; }
+    ta.addEventListener('input', fit);
+    requestAnimationFrame(fit);
+  }
+  // The reply capsule: docked at the bottom of a thread (dock) or inline under a message (onCancel given).
+  // o: label, placeholder, draftKey, sendLabel, disabled, dock, onSend(body, ids) -> Promise, onCancel()
+  function composer(o) {
+    var err = el('div', { class: 'compose-err' });
+    var ta = el('textarea', { required: true, maxlength: 20000, rows: 1, 'aria-label': o.label, placeholder: o.placeholder });
+    var picker = filePicker();
+    var clearDraft = o.disabled ? function () {} : persist(ta, o.draftKey);
+    var cancel = o.onCancel ? guardedCancel(function () { return ta.value.trim() !== '' || picker.count() > 0; }, function () { clearDraft(); o.onCancel(); }) : null;
+    var f = el('form', { class: 'compose' + (o.dock ? ' dock glass' : ' inline') }, mentionable(ta), picker.node, err,
+      cancel ? el('button', { type: 'button', class: 'gbtn', text: 'Cancel', onclick: cancel }) : null,
+      el('button', { type: 'submit', class: 'gbtn primary', disabled: !!o.disabled, text: 'Send', 'aria-label': o.sendLabel || null, title: 'Send (Cmd/Ctrl+Enter)' }));
+    if (o.disabled) { ta.disabled = true; picker.node.querySelector('input').disabled = true; picker.toggle.disabled = true; }
+    if (cancel) escCancels(f, cancel);
+    autosize(ta);
+    picker.dropTarget(f);
+    formSubmit(f, err, function () {
+      return picker.upload().then(function (ids) { return o.onSend(ta.value, ids); }).then(function (r) { clearDraft(); return r; });
+    });
+    f.textarea = ta;
+    f.cancel = cancel;
     return f;
   }
 
@@ -1297,7 +1354,7 @@
       var root = el('div', { class: 'screen' });
       root.areaId = t.area_id;
       root.pageTitle = t.title;
-      var ctx = { closed: !!t.closed, targetId: targetParam ? Number(targetParam) : null, added: function () { route(); }, onOpScore: function () { paintInspector(); } };
+      var ctx = { closed: !!t.closed, targetId: targetParam ? Number(targetParam) : null, added: function () { refresh(); }, onOpScore: function () { paintInspector(); } };
       var titleSlot = el('div');
       var isOwner = me.id === t.owner.id;
       function paintTitle() {
@@ -1311,9 +1368,10 @@
         var input = el('input', { type: 'text', required: true, maxlength: 200, value: t.title, 'aria-label': 'Edit title' });
         var clearDraft = persist(input, 'title:' + t.id);
         var err = el('div');
-        var f = el('form', { class: 'ttl' }, input, el('button', { type: 'submit', class: 'gbtn primary', text: 'Save title' }), el('button', { type: 'button', class: 'gbtn', text: 'Cancel', onclick: function () { clearDraft(); paintTitle(); } }), err);
-        input.addEventListener('keydown', function (ev) { if (ev.key === 'Escape') { clearDraft(); paintTitle(); } });
-        formSubmit(f, err, function () { return api('PATCH', '/api/threads/' + t.id, { title: input.value.trim() }).then(function () { clearDraft(); route(); }); });
+        var cancel = guardedCancel(function () { return input.value.trim() !== t.title; }, function () { clearDraft(); paintTitle(); });
+        var f = el('form', { class: 'ttl' }, input, el('button', { type: 'submit', class: 'gbtn primary', text: 'Save title' }), el('button', { type: 'button', class: 'gbtn', text: 'Cancel', onclick: cancel }), err);
+        escCancels(f, cancel);
+        formSubmit(f, err, function () { return api('PATCH', '/api/threads/' + t.id, { title: input.value.trim() }).then(function () { clearDraft(); refresh(); }); });
         return f;
       }
       paintTitle();
@@ -1327,11 +1385,11 @@
       var controls = el('div', { class: 'owner' });
       function pinButton() {
         return el('button', { type: 'button', class: 'gbtn pin', 'aria-pressed': String(!!t.pinned), disabled: !!t.closed, title: t.pinned ? 'Unpin' : 'Pin to top', text: t.pinned ? '📌 Pinned' : '📌 Pin', onclick: function (ev) {
-          act(ev.currentTarget, function () { return api('PUT', '/api/threads/' + t.id + '/pin', { pinned: !t.pinned }).then(route); }); } });
+          act(ev.currentTarget, function () { return api('PUT', '/api/threads/' + t.id + '/pin', { pinned: !t.pinned }).then(refresh); }); } });
       }
       function reopenButton() {
         return el('button', { type: 'button', class: 'gbtn primary', text: 'Reopen thread', onclick: function (ev) {
-          act(ev.currentTarget, function () { return api('POST', '/api/threads/' + t.id + '/reopen').then(route); }); } });
+          act(ev.currentTarget, function () { return api('POST', '/api/threads/' + t.id + '/reopen').then(refresh); }); } });
       }
       if (isOwner) controls.appendChild(pinButton());
       if (t.closed) {
@@ -1343,7 +1401,7 @@
           openPop(btn, el('div', { class: 'pop', role: 'menu' }, el('div', { class: 'cap', text: 'Close as…' }),
             ['completed', 'archived'].map(function (r) {
               return el('button', { type: 'button', role: 'menuitem', text: r === 'completed' ? 'Close as completed' : 'Close as archived', onclick: function (e2) {
-                act(e2.currentTarget, function () { return api('POST', '/api/threads/' + t.id + '/close', { reason: r }).then(function () { closePop(false); route(); }); }); } });
+                act(e2.currentTarget, function () { return api('POST', '/api/threads/' + t.id + '/close', { reason: r }).then(function () { closePop(false); refresh(); }); }); } });
             })));
         } }));
       }
@@ -1356,19 +1414,10 @@
       root.appendChild(el('h2', { text: replyCount ? 'Replies (' + replyCount + ')' : 'Replies' }));
       if (!replyCount) root.appendChild(el('div', { class: 'empty', text: 'No replies yet' }));
       replies.forEach(function (n) { root.appendChild(renderMsgNode(n, ctx, 0, true)); });
-      var errSlot = el('div', { class: 'compose-err' });
-      var ta = el('textarea', { required: true, maxlength: 20000, id: 'top-reply', rows: 1, 'aria-label': 'Add top-level reply (@username to notify an agent)',
-        placeholder: t.closed ? 'Thread closed: reopen to reply' : 'Reply to the thread… type @ to mention' });
-      var picker = filePicker();
-      var f = el('form', { class: 'compose glass' }, mentionable(ta), picker.node, errSlot,
-        el('button', { type: 'submit', class: 'gbtn primary', disabled: !!t.closed, text: 'Send', title: 'Send (Cmd/Ctrl+Enter)' }));
-      if (t.closed) ta.disabled = true;
-      if (t.closed) { picker.node.querySelector('input').disabled = true; picker.toggle.disabled = true; }
-      picker.dropTarget(f);
-      var clearDraft = t.closed ? function () {} : persist(ta, 'top:' + t.id);
-      formSubmit(f, errSlot, function () {
-        return picker.upload().then(function (ids) { return api('POST', '/api/threads/' + t.id + '/messages', { body: ta.value, attachment_ids: ids }); }).then(function () { clearDraft(); route(); });
-      });
+      var f = composer({ dock: true, disabled: !!t.closed, draftKey: 'top:' + t.id, label: 'Add top-level reply (@username to notify an agent)',
+        placeholder: t.closed ? 'Thread closed: reopen to reply' : 'Reply to the thread… type @ to mention',
+        onSend: function (body, ids) { return api('POST', '/api/threads/' + t.id + '/messages', { body: body, attachment_ids: ids }).then(function () { refresh(); }); } });
+      f.textarea.id = 'top-reply';
       root.appendChild(f);
       root.inspector = function (panel) {
         var closed = !!t.closed;
@@ -1408,7 +1457,7 @@
         if (closed) actions.appendChild(reopenButton());
         else ['completed', 'archived'].forEach(function (r) {
           actions.appendChild(el('button', { type: 'button', class: 'gbtn', text: 'Close as ' + r, onclick: function (ev) {
-            act(ev.currentTarget, function () { return api('POST', '/api/threads/' + t.id + '/close', { reason: r }).then(route); }); } }));
+            act(ev.currentTarget, function () { return api('POST', '/api/threads/' + t.id + '/close', { reason: r }).then(refresh); }); } }));
         });
         panel.appendChild(actions);
         panel.appendChild(el('h3', { text: 'Details' }));

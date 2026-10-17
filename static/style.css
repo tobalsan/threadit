@@ -1,6 +1,7 @@
 :root{
   --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display",system-ui,sans-serif;
   --mono:ui-monospace,"SF Mono",Menlo,monospace;
+  --focus:color-mix(in srgb,var(--accent) 50%,transparent);--focus-soft:color-mix(in srgb,var(--accent) 16%,transparent);
   --accent:#0071e3;--accent-fill:#0071e3;--link:#0059b8;--orange:#b35400;--purple:#8a3fc9;--red:#c9302c;
   --faint:#6b6b70;--text:#1d1d1f;--text2:rgba(29,29,31,.68);--text3:rgba(29,29,31,.5);
   --card:#ffffff;--card2:#f4f4f7;--sep:rgba(0,0,0,.09);--hover:rgba(60,60,90,.08);
@@ -39,8 +40,7 @@ body{font:14.5px/1.5 var(--font);color:var(--text);background:var(--bg) fixed;-w
 button,input,textarea,select{font:inherit;color:inherit}
 button{cursor:pointer}
 a{color:var(--link)}
-:focus-visible{outline:2.5px solid var(--accent);outline-offset:2px}
-[data-theme=dark] :focus-visible{outline-color:#6cb4ff}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 kbd{font:600 11px var(--font);padding:1px 6px;border-radius:5px;background:var(--card2);color:var(--text2);box-shadow:inset 0 0 0 .5px var(--sep)}
 .sr{position:absolute;left:-9999px}
 .skip{position:absolute;left:-9999px}.skip:focus{left:8px;top:8px;background:var(--card);padding:6px 10px;border-radius:10px;z-index:90}
@@ -73,7 +73,7 @@ kbd{font:600 11px var(--font);padding:1px 6px;border-radius:5px;background:var(-
 .me .badge{flex:none;font-size:10.5px;line-height:17px;padding:0 6px}
 .sidebar .lo{all:unset;box-sizing:border-box;flex:none;margin-left:auto;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;color:var(--text2);cursor:pointer;transition:background .15s,color .15s}
 .sidebar .lo:hover{background:var(--hover);color:var(--text)}
-.sidebar .lo:focus-visible{outline:2.5px solid var(--accent);outline-offset:1px}
+.sidebar .lo:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
 .sidebar .lo svg{width:16px;height:16px}
 .avatar{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:12px;color:var(--link);background:rgba(10,113,227,.12);flex:none}
 .avatar.agent{border-radius:9px;color:var(--purple);background:rgba(138,63,201,.13)}
@@ -82,7 +82,7 @@ kbd{font:600 11px var(--font);padding:1px 6px;border-radius:5px;background:var(-
 .seg{display:flex;padding:2px;border-radius:999px;background:var(--card2);box-shadow:inset 0 0 0 .5px var(--sep)}
 .seg button{all:unset;box-sizing:border-box;flex:1;text-align:center;padding:4px 8px;border-radius:999px;font-size:13px;font-weight:600;cursor:pointer;color:var(--text2);transition:color .2s,background .2s}
 .seg button[aria-checked=true]{color:var(--text);background:var(--card);box-shadow:0 1px 3px rgba(0,0,0,.18)}
-.seg button:focus-visible{outline:2.5px solid var(--accent)}
+.seg button:focus-visible{outline:2px solid var(--focus)}
 .seg-theme{align-self:flex-start}
 .seg-theme button{flex:none;width:30px;height:24px;padding:0;display:grid;place-items:center}
 .seg-theme svg{width:14px;height:14px}
@@ -94,7 +94,7 @@ kbd{font:600 11px var(--font);padding:1px 6px;border-radius:5px;background:var(-
 .gbtn,.btn{all:unset;box-sizing:border-box;display:inline-flex;align-items:center;gap:6px;padding:5px 13px;border-radius:999px;font-size:13px;font-weight:600;cursor:pointer;background:var(--card2);color:var(--text);box-shadow:inset 0 0 0 .5px var(--sep);transition:transform .2s cubic-bezier(.3,1.5,.5,1),background .15s}
 .gbtn:hover,.btn:hover{background:var(--hover)}
 .gbtn:active,.btn:active{transform:scale(.95)}
-.gbtn:focus-visible,.btn:focus-visible{outline:2.5px solid var(--accent)}
+.gbtn:focus-visible,.btn:focus-visible{outline:2px solid var(--focus)}
 .gbtn.primary{background:var(--accent-fill);color:#fff;box-shadow:none}
 .gbtn.primary:hover{filter:brightness(1.08);background:var(--accent-fill)}
 .scroll{flex:1;overflow:auto;padding:64px 8px 40px;scroll-behavior:smooth}
@@ -103,6 +103,7 @@ kbd{font:600 11px var(--font);padding:1px 6px;border-radius:5px;background:var(-
 .col>.screen{display:flex;flex-direction:column;gap:10px}
 .col>.screen.with-side{display:grid}
 .screen{animation:enter .2s var(--ease)}
+.screen.noanim{animation:none}
 @keyframes enter{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 .pageh,h1{font-size:28px;font-weight:800;letter-spacing:-.025em;margin:6px 6px 0;line-height:1.2}
 .sub{margin:0 6px;color:var(--text2);font-size:13.5px}
@@ -125,7 +126,7 @@ select option{background:var(--card);color:var(--text)}
 .li h3{margin:0;font-size:15px;font-weight:620;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .li h3 a{color:var(--text);text-decoration:none}
 .li h3 a:hover{text-decoration:underline}
-.li h3 a:focus-visible{outline:2.5px solid var(--accent);outline-offset:3px;border-radius:6px}
+.li h3 a:focus-visible{outline:2px solid var(--focus);outline-offset:3px;border-radius:6px}
 .meta{display:flex;flex-wrap:wrap;gap:0 10px;align-items:center;font-size:12.5px;color:var(--text2);margin-top:1px}
 .meta a{color:var(--text2);text-decoration:none}.meta a:hover{text-decoration:underline}
 .meta .pin{color:var(--orange);font-weight:600}
@@ -143,7 +144,7 @@ select option{background:var(--card);color:var(--text)}
 .vote button{all:unset;box-sizing:border-box;display:grid;place-items:center;cursor:pointer;color:var(--text2);font-weight:700;transition:transform .2s cubic-bezier(.3,1.8,.5,1),color .15s,background .15s}
 .vote button:hover{color:var(--link);background:rgba(10,113,227,.12)}
 .vote button:active{transform:scale(.8)}
-.vote button:focus-visible{outline:2.5px solid var(--accent)}
+.vote button:focus-visible{outline:2px solid var(--focus)}
 .vote output{font-weight:800;font-variant-numeric:tabular-nums;text-align:center;display:block}
 .vote.v{flex-direction:column;width:34px}
 .vote.v button{width:34px;height:15px;font-size:9px;border-radius:7px}
@@ -162,7 +163,10 @@ input[type=checkbox]{padding:0;box-shadow:none;accent-color:var(--accent)}
 input::placeholder,textarea::placeholder{color:var(--text3)}
 [data-theme=light] input::placeholder,[data-theme=light] textarea::placeholder{color:#6b6b72}
 [data-theme=dark] input::placeholder,[data-theme=dark] textarea::placeholder{color:#a0a0aa}
-textarea{width:100%;min-height:80px;resize:vertical}
+textarea{width:100%;min-height:80px;resize:vertical;scrollbar-width:thin;scrollbar-color:transparent transparent}
+textarea:hover,textarea:focus{scrollbar-color:color-mix(in srgb,var(--text) 22%,transparent) transparent}
+input:focus,textarea:focus,input:focus-visible,textarea:focus-visible{outline:0;box-shadow:inset 0 0 0 1px var(--focus),0 0 0 3px var(--focus-soft)}
+form textarea{margin:6px 0}
 .field{display:flex;flex-direction:column;gap:3px;margin-bottom:10px}
 .field label{font-weight:650;font-size:12.5px;color:var(--text2)}
 button{padding:5px 13px;border:0;border-radius:999px;background:var(--card2);box-shadow:inset 0 0 0 .5px var(--sep);font-weight:600;font-size:13px;transition:background .15s}
@@ -171,7 +175,7 @@ button.primary{background:var(--accent-fill);color:#fff;box-shadow:none}
 button.primary:hover{filter:brightness(1.08);background:var(--accent-fill)}
 button:disabled{opacity:.5;cursor:default}
 button.small{padding:1px 9px;font-size:12.5px}
-form.dragover{outline:2.5px dashed var(--accent);outline-offset:2px}
+form.dragover{outline:2px dashed var(--focus);outline-offset:2px}
 .attach{margin-bottom:8px}
 .attach .field{margin:6px 0 0}
 .filelist{margin:4px 0;padding-left:18px}
@@ -211,7 +215,7 @@ h1.ttitle{font-size:30px;font-weight:800;letter-spacing:-.028em;line-height:1.15
 .ttl .pencil{all:unset;cursor:pointer;flex:none;width:30px;height:30px;display:grid;place-items:center;border-radius:999px;color:var(--text2);font-size:17px;opacity:0;transition:opacity .15s,background .15s}
 .ttl:hover .pencil,.ttl .pencil:focus-visible{opacity:1}
 .ttl .pencil:hover{background:var(--hover);color:var(--text)}
-.ttl .pencil:focus-visible{outline:2.5px solid var(--accent)}
+.ttl .pencil:focus-visible{outline:2px solid var(--focus)}
 @media (hover:none){.ttl .pencil{opacity:1}}
 .ttl input{flex:1;font:800 30px/1.15 var(--font);letter-spacing:-.028em;background:var(--card);box-shadow:0 0 0 2px var(--accent);min-width:0;padding:2px 10px}
 .oplabel{font-size:11px;font-weight:750;letter-spacing:.07em;text-transform:uppercase;color:var(--link);margin-bottom:6px}
@@ -222,16 +226,22 @@ h1.ttitle{font-size:30px;font-weight:800;letter-spacing:-.028em;line-height:1.15
 .pop .cap{font-size:11px;color:var(--text2);padding:4px 11px;font-weight:650}
 
 /* docked composer: sticky measures from the content box, so the thread page drops the bottom padding */
-.scroll:has(.compose){padding-bottom:6px}
-.compose{position:sticky;z-index:5;bottom:6px;width:100%;max-width:720px;margin:6px auto 0;border-radius:24px;padding:6px 6px 6px 8px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:var(--glass-strong)}
-.compose .mwrap{flex:1;min-width:0}
-.compose textarea{display:block;height:34px;min-height:34px;max-height:160px;resize:none;border:0;background:transparent;box-shadow:none;padding:7px 6px;line-height:20px;outline:0;field-sizing:content}
-.compose:focus-within{outline:2.5px solid var(--accent)}
+.scroll:has(.compose.dock){padding-bottom:6px;display:flex;flex-direction:column}
+.scroll:has(.compose.dock)>.col{flex:1 0 auto;width:100%}
+.col>.screen:has(>.compose.dock){flex:1 0 auto}
+.compose{width:100%;border-radius:22px;padding:6px 6px 6px 8px;display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;background:var(--card2);box-shadow:inset 0 0 0 .5px var(--sep)}
+.compose.dock{position:sticky;z-index:5;bottom:6px;max-width:720px;margin:auto auto 0;border-radius:24px;background:var(--glass-strong);box-shadow:inset 0 1px 0 var(--spec),inset 0 -1px 0 var(--edge),0 0 0 .5px var(--ring),var(--shadow)}
+.compose.inline{margin-top:10px}
+.compose .mwrap{flex:1;min-width:0;align-self:center}
+.compose textarea,.compose textarea:focus{display:block;height:34px;min-height:34px;max-height:114px;margin:0;resize:none;overflow-y:auto;border:0;background:transparent;box-shadow:none;padding:7px 6px;line-height:20px;outline:0}
+.compose:focus-within{outline:0;box-shadow:inset 0 0 0 1px var(--focus),0 0 0 3px var(--focus-soft)}
+.compose.dock:focus-within{box-shadow:inset 0 1px 0 var(--spec),inset 0 -1px 0 var(--edge),0 0 0 1px var(--focus),0 0 0 4px var(--focus-soft),var(--shadow)}
+.compose>.gbtn{margin-bottom:1px}
 .compose .mention-pop{top:auto;bottom:calc(100% + 10px);background:var(--card)}
 .compose .attach{display:contents}
 .compose .attach .field,.compose .filelist,.compose .compose-err{order:1;flex-basis:100%;margin:0 8px}
 .compose .attach .field{padding-bottom:4px}
-.compose .attach>button{order:-1}
+.compose .attach>button{order:-1;margin-bottom:5px}
 .compose .compose-err:empty,.compose .filelist:empty{display:none}
 .compose.dragover{outline-style:dashed}
 
@@ -272,13 +282,11 @@ h1.ttitle{font-size:30px;font-weight:800;letter-spacing:-.028em;line-height:1.15
 @media (hover:none){.hov{opacity:1}.vwrap{position:static;margin-left:auto}.head{padding-right:0}.vwrap .vote{position:static;margin:0;opacity:1}.vscore{display:none}}
 .link{all:unset;cursor:pointer;font-size:13px;font-weight:650;color:var(--text2);padding:3px 9px;border-radius:999px;white-space:nowrap}
 .link:hover{background:var(--card2);color:var(--text)}
-.link:focus-visible{outline:2.5px solid var(--accent)}
+.link:focus-visible{outline:2px solid var(--focus)}
 .link:disabled{opacity:.5;cursor:default}
 .expand{display:grid;grid-template-rows:0fr;transition:grid-template-rows .22s var(--ease)}
 .expand.open{grid-template-rows:1fr}
-.expand>div{overflow:hidden;min-height:0}
-.replyform{margin-top:10px}
-.replyform textarea{min-height:44px;border-radius:14px}
+.expand>div{overflow:hidden;min-height:0;padding:0 4px 4px;margin:0 -4px -4px}
 .tapback{position:fixed;z-index:60;display:flex;gap:2px;align-items:center;padding:5px;border-radius:999px;background:var(--glass-strong);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);box-shadow:inset 0 1px 0 var(--spec),0 0 0 .5px var(--ring),var(--shadow);animation:tap .3s cubic-bezier(.3,1.6,.5,1)}
 @keyframes tap{from{opacity:0;transform:translateY(8px) scale(.6)}to{opacity:1;transform:none}}
 .tapback button{all:unset;box-sizing:border-box;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;font-size:20px;cursor:pointer;transition:transform .2s cubic-bezier(.3,1.8,.5,1),background .15s}
@@ -341,7 +349,7 @@ main:has(.with-side){max-width:1180px}
 .pin-row input{all:unset;box-sizing:border-box;flex:1;min-width:0;height:50px;font-size:18px;color:var(--text)}
 .pin-row input::placeholder{color:var(--text2)}
 .pin-row input:focus-visible{outline:0}
-.pin-row:focus-within{box-shadow:inset 0 -2.5px 0 var(--accent)}
+.pin-row:focus-within{box-shadow:inset 0 -1.5px 0 var(--focus)}
 .pin-row>svg{width:18px;height:18px;flex:none}
 .palette .res{max-height:360px;overflow:auto;padding:6px}
 .palette .grp-l{font-size:11px;font-weight:750;letter-spacing:.06em;text-transform:uppercase;color:var(--text2);padding:8px 10px 3px}
@@ -367,14 +375,14 @@ main:has(.with-side){max-width:1180px}
 .sheet .attach{margin:0}
 .apick{all:unset;box-sizing:border-box;display:flex;align-items:center;gap:10px;width:100%;padding:6px 10px;border-radius:12px;background:var(--card2);box-shadow:inset 0 0 0 .5px var(--sep);cursor:pointer}
 .apick:hover{background:var(--hover)}
-.apick:focus-visible{outline:2.5px solid var(--accent)}
+.apick:focus-visible{outline:2px solid var(--focus)}
 .apick .tile{width:26px;height:26px;font-size:14px;border-radius:8px}
 .apick .ct{color:var(--text2);font-size:12px;margin-left:6px}
 .apick .chev{margin-left:auto;color:var(--text2);font-size:12px}
 .adrop{position:absolute;left:0;right:0;top:100%;margin-top:6px;z-index:5;border-radius:16px;padding:6px;background:var(--card);box-shadow:0 0 0 .5px var(--sep),0 12px 32px rgba(0,0,0,.22);animation:popin .18s var(--ease);transform-origin:top left}
 .adrop input{all:unset;box-sizing:border-box;width:100%;padding:7px 10px;font-size:14px;border-bottom:.5px solid var(--sep);margin-bottom:4px;color:var(--text)}
 .adrop input::placeholder{color:var(--text2)}
-.adrop input:focus-visible{outline:0;border-bottom-color:var(--accent)}
+.adrop input:focus-visible{outline:0;box-shadow:none;border-bottom-color:var(--focus)}
 .adrop .lst{max-height:240px;overflow:auto}
 .adrop .opt{display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:10px;cursor:pointer}
 .adrop .opt .tile{width:30px;height:30px;font-size:15px;border-radius:9px}
@@ -420,3 +428,12 @@ main:has(.with-side){max-width:1180px}
 .authsep{border:0;height:1px;background:var(--sep);margin:18px 0}
 .authcard form>div:empty{display:none}
 .card .badge+.badge{margin-left:4px}
+
+/* discard confirm */
+dialog.confirm{border:0;border-radius:18px;padding:18px 18px 14px;width:min(340px,calc(100vw - 32px));background:var(--card);color:var(--text);box-shadow:0 24px 60px rgba(0,0,0,.3),0 0 0 .5px var(--sep)}
+dialog.confirm::backdrop{background:rgba(0,0,0,.25)}
+dialog.confirm h2{margin:0 0 4px;font-size:15px}
+dialog.confirm p{margin:0 0 14px;color:var(--text2);font-size:13.5px}
+dialog.confirm .row2{display:flex;justify-content:flex-end;gap:8px}
+button.danger{background:#d70015;color:#fff;box-shadow:none}
+button.danger:hover{background:#b80012}

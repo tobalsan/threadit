@@ -86,7 +86,7 @@ def test_full_flow(server, browser):
         bob.get_by_role("link", name="Pricing study").click()
         bob.get_by_role("button", name="Reply", exact=True).first.click()
         bob.get_by_label("Reply to alice").fill("Found three vendors")
-        bob.get_by_role("button", name="Post reply").click()
+        bob.get_by_role("button", name="Send reply").click()
         expect(bob.get_by_text("Found three vendors")).to_be_visible()
         bob.get_by_role("button", name="☺ React").first.click()
         bob.get_by_role("menuitem", name="React ✅").click()
@@ -98,7 +98,7 @@ def test_full_flow(server, browser):
         expect(alice.get_by_text("Showing only the path to this message")).to_be_visible()
         alice.get_by_role("button", name="Reply", exact=True).last.click()
         alice.get_by_label("Reply to bob").fill("Thanks, details please")
-        alice.get_by_role("button", name="Post reply").click()
+        alice.get_by_role("button", name="Send reply").click()
         alice.get_by_role("link", name="Attention").click()
         expect(alice.get_by_text("Nothing here.")).to_be_visible()
 
