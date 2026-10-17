@@ -1651,7 +1651,9 @@
           var ctx = { closed: false, added: route, markable: true, onAttention: function (nm) {
             refreshAttentionCount();
             var now = nm.my_attention && nm.my_attention.status;
-            if (inFilter && status !== 'all' && now !== status) { inFilter = false; offset--; }
+            // Keep the server offset in step when the item leaves or re-enters the filter.
+            var nowIn = status === 'all' || now === status;
+            if (nowIn !== inFilter) { inFilter = nowIn; offset += nowIn ? 1 : -1; }
             if (status !== 'all' && now !== status && (now === 'acknowledged' || now === 'processed')) {
               box.remove();
               if (!list.firstChild && !more.firstChild) root.insertBefore(el('div', { class: 'empty', text: 'Nothing here.' }), list);

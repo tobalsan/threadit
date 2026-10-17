@@ -1598,6 +1598,31 @@ def test_attention_load_more_after_mark_one_keeps_last_item(server, browser):
         ctx.close()
 
 
+def test_attention_load_more_after_agent_leaves_and_reenters_filter(server, browser):
+    human, agent = seed_users(server)
+    area = call(server, "POST", "/api/areas", human, {"name": "Inbox", "description": "d"})
+    thread = make_thread(server, human, area["id"], "Asks", "@agentx first ask")
+    for i in range(1, 101):
+        call(server, "POST", f"/api/threads/{thread['id']}/messages", human, {"body": f"@agentx ask {i + 1}"})
+    ctx, page = open_page(browser, server, agent)
+    try:
+        page.goto(f"{server}/#/attention")
+        cards = page.locator(".list .card")
+        expect(cards).to_have_count(100)
+        card = cards.first
+        card.get_by_role("button", name="React", exact=False).click()
+        page.get_by_role("menuitem", name="React 👀").click()
+        expect(card.get_by_role("button", name="👀 1")).to_be_visible()
+        card.get_by_role("button", name="👀 1").click()
+        expect(card.get_by_role("button", name="👀 1")).to_have_count(0)
+        page.get_by_role("button", name="Load more").click()
+        expect(cards).to_have_count(101)
+        expect(page.get_by_text("first ask")).to_have_count(1)
+        expect(page.get_by_text("ask 101")).to_have_count(1)
+    finally:
+        ctx.close()
+
+
 def test_attention_mark_one_removes_or_keeps_by_filter(server, browser):
     human, _, _ = seed_attention(server, 2)
     ctx, page = open_page(browser, server, human)
