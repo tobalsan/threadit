@@ -66,11 +66,15 @@ kbd{font:600 11px var(--font);padding:1px 6px;border-radius:5px;background:var(-
 .nav .ic{width:20px;height:20px;display:grid;place-items:center;flex:none}
 .nav .ic svg{width:17px;height:17px}
 .navcount{margin-left:auto;background:var(--accent-fill);color:#fff;border-radius:999px;font-size:11px;font-weight:700;padding:0 6px;min-width:18px;text-align:center;line-height:18px}
-.sb-foot{margin-top:auto;display:flex;flex-direction:column;gap:8px;padding-top:10px}
-.label{font-size:11px;color:var(--text2);padding:0 4px 3px}
-.me{display:flex;align-items:center;gap:10px;padding:4px 6px}
-.me b{display:block;line-height:1.25}
-.me small{display:flex;gap:4px;flex-wrap:wrap;margin-top:1px}
+.sb-foot{margin-top:auto;display:flex;flex-direction:column;gap:10px;padding-top:10px}
+#whoami{display:flex;align-items:center;gap:6px}
+.me{display:flex;align-items:center;gap:7px;padding:2px 2px;min-width:0;flex:1}
+.me .nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.me .badge{flex:none;font-size:10.5px;line-height:17px;padding:0 6px}
+.sidebar .lo{all:unset;box-sizing:border-box;flex:none;margin-left:auto;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;color:var(--text2);cursor:pointer;transition:background .15s,color .15s}
+.sidebar .lo:hover{background:var(--hover);color:var(--text)}
+.sidebar .lo:focus-visible{outline:2.5px solid var(--accent);outline-offset:1px}
+.sidebar .lo svg{width:16px;height:16px}
 .avatar{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:12px;color:var(--link);background:rgba(10,113,227,.12);flex:none}
 .avatar.agent{border-radius:9px;color:var(--purple);background:rgba(138,63,201,.13)}
 [data-theme=dark] .avatar{background:rgba(10,132,255,.2)}
@@ -79,7 +83,9 @@ kbd{font:600 11px var(--font);padding:1px 6px;border-radius:5px;background:var(-
 .seg button{all:unset;box-sizing:border-box;flex:1;text-align:center;padding:4px 8px;border-radius:999px;font-size:13px;font-weight:600;cursor:pointer;color:var(--text2);transition:color .2s,background .2s}
 .seg button[aria-checked=true]{color:var(--text);background:var(--card);box-shadow:0 1px 3px rgba(0,0,0,.18)}
 .seg button:focus-visible{outline:2.5px solid var(--accent)}
-.seg .gl{display:none}
+.seg-theme{align-self:flex-start}
+.seg-theme button{flex:none;width:30px;height:24px;padding:0;display:grid;place-items:center}
+.seg-theme svg{width:14px;height:14px}
 
 .main{flex:1;min-width:0;position:relative;display:flex;flex-direction:column}
 .toolbar{position:absolute;z-index:5;top:0;left:0;right:0;margin:0 auto;max-width:860px;border-radius:999px;padding:6px 8px 6px 18px;display:flex;align-items:center;gap:10px;min-height:46px}
@@ -124,7 +130,8 @@ select option{background:var(--card);color:var(--text)}
 .meta a{color:var(--text2);text-decoration:none}.meta a:hover{text-decoration:underline}
 .meta .pin{color:var(--orange);font-weight:600}
 .need{display:inline-flex;align-items:center;padding:0 8px;border-radius:999px;font-size:11.5px;font-weight:650;line-height:18px;background:#d70015;color:#fff}
-.meta .rc{display:inline-flex;align-items:center;gap:3px}
+.meta .rc{display:inline-flex;align-items:center;gap:4px}
+.meta .rc svg{width:13px;height:13px;opacity:.85}
 .who{font-weight:600;color:var(--text)}
 .ag{color:var(--purple);margin-left:3px;font-size:.9em}
 .mut{color:var(--text2);font-size:13px}
@@ -181,7 +188,7 @@ form.dragover{outline:2.5px dashed var(--accent);outline-offset:2px}
 .err{background:rgba(215,0,21,.1);box-shadow:inset 0 0 0 1px rgba(215,0,21,.35);color:var(--red);padding:8px 12px;border-radius:12px;margin:8px 0;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 [data-theme=light] .err{color:#b4001a}
 .loading{color:var(--text2);padding:16px}
-.empty{color:var(--text2);padding:22px;text-align:center;background:var(--card);border-radius:16px;box-shadow:0 0 0 .5px var(--sep)}
+.empty{color:var(--text2);padding:22px;text-align:center}
 .notice{background:rgba(255,159,10,.16);box-shadow:inset 0 0 0 1px rgba(255,159,10,.4);padding:8px 12px;border-radius:12px;margin:8px 0}
 .attn{font-size:11.5px;font-weight:650;padding:0 8px;line-height:18px;border-radius:999px;background:#d70015;color:#fff;display:inline-block}
 .pager{display:flex;gap:8px;justify-content:center;margin-top:4px}
@@ -222,8 +229,8 @@ h1.ttitle{font-size:30px;font-weight:800;letter-spacing:-.028em;line-height:1.15
 .compose:focus-within{outline:2.5px solid var(--accent)}
 .compose .mention-pop{top:auto;bottom:calc(100% + 10px);background:var(--card)}
 .compose .attach{display:contents}
-.compose .attach .field,.compose .filelist,.compose .compose-err{order:-1;flex-basis:100%;margin:0 8px}
-.compose .attach .field{padding-top:4px}
+.compose .attach .field,.compose .filelist,.compose .compose-err{order:1;flex-basis:100%;margin:0 8px}
+.compose .attach .field{padding-bottom:4px}
 .compose .attach>button{order:-1}
 .compose .compose-err:empty,.compose .filelist:empty{display:none}
 .compose.dragover{outline-style:dashed}
@@ -388,16 +395,15 @@ main:has(.with-side){max-width:1180px}
 
 @media (max-width:1000px){
   .sidebar{width:62px;padding:10px 7px;border-radius:24px}
-  .brand span,.nav .t,.search .tx,.search kbd,.me span,.label,.seg .tx,.sidebar .lo .tx{display:none}
+  .brand span,.nav .t,.search .tx,.search kbd,.me .nm,.me .badge{display:none}
   .search{justify-content:center;padding:8px 0}
   .nav a{justify-content:center;padding:8px 0;position:relative}
   .navcount{position:absolute;top:-2px;right:-2px;margin:0;font-size:10px;min-width:16px;line-height:16px;padding:0 4px}
   .brand{justify-content:center;padding:6px 0 10px}
-  .me{justify-content:center}
-  .seg{flex-direction:column;border-radius:16px}
-  .seg button{padding:3px 4px}
-  .seg .gl{display:inline}
-  .sidebar .lo{justify-content:center;padding:5px 0;width:100%}
+  #whoami{flex-direction:column}
+  .me{justify-content:center;flex:none}
+  .sidebar .lo{margin:0}
+  .seg{flex-direction:column;border-radius:16px;align-self:center}
 }
 @media (max-width:860px){.with-side{grid-template-columns:1fr}.with-side .side{position:static}}
 @media (max-width:600px){.shell{padding:8px;gap:8px}}

@@ -413,8 +413,11 @@
   }
 
   // ---------- theme ----------
+  var SVG_NS = 'http://www.w3.org/2000/svg';
   var THEME_KEY = 'threaddit:theme';
-  var THEMES = [['system', 'System', '◐'], ['light', 'Light', '☀'], ['dark', 'Dark', '☾']];
+  var THEMES = [['system', 'System', 'M3 4.5h18v11.5H3zM8.5 20h7M12 16v4'],
+    ['light', 'Light', 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4'],
+    ['dark', 'Dark', 'M20.5 14.5A8.5 8.5 0 1 1 9.5 3.5a7 7 0 0 0 11 11z']];
   var darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
   function themePref() {
     var v = null;
@@ -434,9 +437,8 @@
     var cur = themePref();
     clear(seg);
     THEMES.forEach(function (t, i) {
-      var b = el('button', { type: 'button', role: 'radio', 'aria-checked': String(t[0] === cur), 'aria-label': t[1], tabindex: t[0] === cur ? '0' : '-1',
-        onclick: function () { setTheme(t[0]); seg.children[i].focus(); } },
-        el('span', { class: 'tx', text: t[1] }), el('span', { class: 'gl', 'aria-hidden': 'true', text: t[2] }));
+      var b = el('button', { type: 'button', role: 'radio', 'aria-checked': String(t[0] === cur), 'aria-label': t[1], title: t[1], tabindex: t[0] === cur ? '0' : '-1',
+        onclick: function () { setTheme(t[0]); seg.children[i].focus(); } }, svgIcon(t[2]));
       seg.appendChild(b);
     });
   }
@@ -452,7 +454,6 @@
   applyTheme(); paintThemeSeg();
 
   // ---------- chrome ----------
-  var SVG_NS = 'http://www.w3.org/2000/svg';
   var NAV_ICONS = { Home: ['#0a84ff', 'M3 11 12 4l9 7M5 10v10h14V10'], Areas: ['#ff9f0a', 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z'],
     Attention: ['#ff375f', 'M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 21h4'], Activity: ['#30a14e', 'M3 12h4l3-8 4 16 3-8h4'],
     Users: ['#bf5af2', 'M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM2 20c0-4 3-6 7-6s7 2 7 6M17 5a3 3 0 0 1 0 6M19 14c2 .7 3 2.5 3 5'],
@@ -505,15 +506,15 @@
     link.setAttribute('aria-label', 'Attention' + (count ? ', ' + count + ' need your attention' : ''));
   }
   function renderChrome() {
-    var who = document.getElementById('whoami');
-    clear(who);
+    var box = document.getElementById('whoami');
+    clear(box);
     document.body.classList.toggle('anon', !me);
     if (!me) { clear(document.getElementById('nav')); setInspector(null); return; }
     paintNav();
-    who.appendChild(el('div', { class: 'me' }, el('div', { class: 'avatar' + (me.account_type === 'agent' ? ' agent' : ''), 'aria-hidden': 'true', text: me.username.charAt(0).toUpperCase() }),
-      el('span', null, el('b', { text: me.username }), el('small', null, badge(me.account_type), me.is_superadmin ? el('span', { class: 'badge super', text: 'superadmin' }) : null))));
-    who.appendChild(el('button', { type: 'button', class: 'btn lo', 'aria-label': 'Log out', onclick: function () { setToken(null); me = null; attentionCount = 0; renderChrome(); location.hash = '#/'; route(); } },
-      el('span', { 'aria-hidden': 'true', text: '⏻' }), el('span', { class: 'tx', text: 'Log out' })));
+    box.appendChild(el('div', { class: 'me' }, el('div', { class: 'avatar' + (me.account_type === 'agent' ? ' agent' : ''), 'aria-hidden': 'true', text: me.username.charAt(0).toUpperCase() }),
+      el('span', { class: 'nm' }, who(me)), me.is_superadmin ? el('span', { class: 'badge super', text: 'superadmin' }) : null));
+    box.appendChild(el('button', { type: 'button', class: 'lo', 'aria-label': 'Log out', title: 'Log out', onclick: function () { setToken(null); me = null; attentionCount = 0; renderChrome(); location.hash = '#/'; route(); } },
+      svgIcon('M12 3v8M7.5 6.2a7 7 0 1 0 9 0')));
   }
   // toolbar: page title and the "New thread" button (shown by views that give a handler)
   var PAGE_TITLES = { '': 'Home', areas: 'Areas', area: 'Area', thread: 'Thread', context: 'Thread', attention: 'Attention', activity: 'Activity', search: 'Search', users: 'Users', admin: 'Admin' };
@@ -1046,7 +1047,7 @@
           t.pending_attention ? el('span', { class: 'need', text: 'Needs you · ' + t.pending_attention }) : null,
           el('a', { href: '#/area/' + areaRef(t), text: t.area_name }),
           who(t.owner),
-          el('span', { class: 'rc', 'aria-label': replies + (replies === 1 ? ' reply' : ' replies'), text: '💬 ' + replies }),
+          el('span', { class: 'rc', 'aria-label': replies + (replies === 1 ? ' reply' : ' replies') }, svgIcon('M20 11.5a7.5 7 0 0 1-11 6.2L4 19l1.4-4A7.5 7 0 1 1 20 11.5z'), String(replies)),
           el('span', { title: 'Last activity ' + fmt(t.last_activity_at), text: ago(t.last_activity_at) }))));
     row.thread = t;
     return row;

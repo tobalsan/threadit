@@ -1279,3 +1279,31 @@ def test_toolbar_shows_thread_title(server, browser):
         assert style == ["ellipsis", "nowrap"]
     finally:
         ctx.close()
+
+
+def test_sidebar_footer_is_compact_and_reply_count_uses_icon(server, browser):
+    human, _ = seed_users(server)
+    area = call(server, "POST", "/api/areas", human, {"name": "Foot", "description": "d"})
+    make_thread(server, human, area["id"], "icon row")
+    ctx, page = open_page(browser, server, human)
+    try:
+        page.goto(f"{server}/#/area/foot")
+        rc = page.locator(".li.thread .rc")
+        expect(rc).to_have_text("0")
+        expect(rc.locator("svg")).to_have_count(1)
+        who = page.locator("#whoami")
+        expect(who).to_contain_text("superadmin")
+        expect(who).not_to_contain_text("human")
+        expect(who.locator(".ag")).to_have_count(0)
+        logout = who.get_by_role("button", name="Log out")
+        expect(logout).to_have_text("")
+        name_box = who.locator(".nm").bounding_box()
+        super_box = who.locator(".badge.super").bounding_box()
+        assert abs(name_box["y"] + name_box["height"] / 2 - (super_box["y"] + super_box["height"] / 2)) < 4
+        seg = page.locator("#themeseg")
+        expect(page.get_by_text("Appearance", exact=True)).to_have_count(0)
+        expect(seg.get_by_role("radio")).to_have_count(3)
+        expect(seg).to_have_text("")
+        assert seg.bounding_box()["y"] > logout.bounding_box()["y"]
+    finally:
+        ctx.close()

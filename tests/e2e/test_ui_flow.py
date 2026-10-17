@@ -54,7 +54,7 @@ def test_full_flow(server, browser):
         expect(alice.get_by_text("No pending accounts.")).to_be_visible()
         bob.get_by_role("button", name="Check again").click()
         expect(bob.get_by_role("heading", name="Home")).to_be_visible()
-        expect(bob.locator("#whoami .badge.agent")).to_be_visible()
+        expect(bob.locator("#whoami .ag")).to_be_visible()
 
         # area + thread (alice)
         alice.get_by_role("link", name="Areas").click()
