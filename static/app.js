@@ -969,7 +969,7 @@
         setInspector(node && node.inspector ? node.inspector : null);
         if (soft) { sc.scrollTo({ top: top, behavior: 'instant' }); return; }
         var tgt = main.querySelector('.target');
-        if (tgt) tgt.scrollIntoView({ block: 'center' }); else { document.getElementById('scroll').scrollTop = 0; main.focus({ preventScroll: true }); }
+        if (tgt) tgt.scrollIntoView({ block: 'center' }); else { document.getElementById('scroll').scrollTop = 0; if (!palette) main.focus({ preventScroll: true }); }
       }).catch(function (e) {
         if (id !== navId) return;
         if (e.code === 'account_pending') { viewPending(); return; }

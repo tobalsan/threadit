@@ -1051,7 +1051,7 @@ def test_command_palette_open_filter_enter_and_actions(server, browser):
         page.keyboard.press("ControlOrMeta+k")
         box.fill("users")
         box.press("ArrowDown")
-        expect(page.get_by_role("option").nth(1)).to_have_attribute("aria-selected", "true")
+        expect(page.get_by_role("dialog", name="Command palette").get_by_role("option").nth(1)).to_have_attribute("aria-selected", "true")
         box.press("ArrowUp")
         box.press("Enter")
         expect(page).to_have_url(re.compile(r"#/users$"))
