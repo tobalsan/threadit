@@ -1722,3 +1722,23 @@ def test_mark_as_seen_sits_top_left_and_shows_on_hover(server, browser):
         assert b["x"] + b["width"] < votes["x"]
     finally:
         ctx.close()
+
+
+def test_inline_reply_mention_popup_is_not_clipped(server, browser):
+    human, agent = seed_users(server)
+    area = call(server, "POST", "/api/areas", human, {"name": "Clip", "description": "d"})
+    thread = make_thread(server, human, area["id"], "Clip thread", "op body")
+    call(server, "POST", f"/api/threads/{thread['id']}/messages", agent, {"body": "a reply"})
+    ctx, page = open_page(browser, server, human)
+    try:
+        page.goto(f"{server}/#/thread/{thread['id']}")
+        card = page.locator(".msgbody").filter(has_text="a reply")
+        card.hover()
+        card.get_by_role("button", name="Reply", exact=True).click()
+        reply = page.get_by_label("Reply to agentx")
+        reply.fill("hi @agent")
+        # the popup opens above the inline form: a click must reach the option
+        page.get_by_role("option", name=re.compile("agentx")).click(timeout=3000)
+        expect(reply).to_have_value("hi @agentx ")
+    finally:
+        ctx.close()
