@@ -1314,8 +1314,8 @@
       ev.preventDefault(); ev.stopPropagation(); cancel();
     });
   }
-  // The textarea grows with its text up to COMPOSE_MAX_PX (5 lines), then scrolls.
-  var COMPOSE_MAX_PX = 5 * 20 + 14;
+  // The textarea grows with its text up to COMPOSE_MAX_PX (10 lines), then scrolls.
+  var COMPOSE_MAX_PX = 10 * 20 + 14;
   function autosize(ta) {
     function fit() { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, COMPOSE_MAX_PX) + 'px'; }
     ta.addEventListener('input', fit);

@@ -1351,10 +1351,10 @@ def test_reply_composer_refresh_area_cancel_and_activity_timeline(server, browse
         page.get_by_role("button", name="📌 Pin").click()
         expect(page.get_by_role("button", name="📌 Pinned")).to_be_visible()
         assert page.evaluate("window.flashes") == 0
-        # the docked composer grows to five lines, then scrolls
+        # the docked composer grows to ten lines, then scrolls
         top = page.locator("#top-reply")
-        top.fill("\n".join(f"line {i}" for i in range(8)))
-        assert top.evaluate("e => e.getBoundingClientRect().height") == 114
+        top.fill("\n".join(f"line {i}" for i in range(13)))
+        assert top.evaluate("e => e.getBoundingClientRect().height") == 214
         # a nested reply uses the same composer; Esc asks before it discards
         page.get_by_role("button", name="Reply", exact=True).first.click()
         nested = page.get_by_label("Reply to hanna", exact=True)
