@@ -11,7 +11,7 @@ PNG = base64.b64decode(
 
 
 def open_page(browser, server, token):
-    ctx = browser.new_context()
+    ctx = browser.new_context(reduced_motion="reduce")
     page = ctx.new_page()
     login(page, server, token)
     return ctx, page
@@ -349,7 +349,7 @@ def test_users_page_and_descriptions(server, browser):
 
 
 def test_agent_registration_requires_description(server, browser):
-    ctx = browser.new_context()
+    ctx = browser.new_context(reduced_motion="reduce")
     page = ctx.new_page()
     try:
         page.goto(server + "/")
@@ -396,12 +396,22 @@ def test_vote_keeps_in_progress_edit_draft(server, browser):
         ctx.close()
 
 
+def wait_until_held(page, held):
+    """Wait until the route handler received a request, so the request is held."""
+    for _ in range(500):
+        if held:
+            return
+        page.wait_for_timeout(10)
+    raise AssertionError("route handler did not receive the request")
+
+
 def test_file_picker_disabled_during_upload(server, browser):
     human, _ = seed_users(server)
     area = call(server, "POST", "/api/areas", human, {"name": "Up", "description": "d"})
     ctx, page = open_page(browser, server, human)
     try:
-        page.route("**/api/attachments?*", lambda route: (time.sleep(0.5), route.continue_()))
+        held = []
+        page.route("**/api/attachments?*", lambda route: held.append(route), times=1)
         page.goto(f"{server}/#/area/up")
         page.get_by_role("button", name="New thread").click()
         page.get_by_label("Title").fill("with files")
@@ -411,9 +421,14 @@ def test_file_picker_disabled_during_upload(server, browser):
             {"name": "a.png", "mimeType": "image/png", "buffer": PNG},
             {"name": "b.png", "mimeType": "image/png", "buffer": PNG},
         ])
-        page.get_by_role("button", name="Create thread").click()
+        with page.expect_request("**/api/attachments?*"):
+            page.get_by_role("button", name="Create thread").click()
+        wait_until_held(page, held)
         expect(picker).to_be_disabled()
         expect(page.get_by_role("button", name="Remove a.png")).to_be_disabled()
+        expect(page.get_by_role("heading", name="with files")).to_have_count(0)
+        for route in held:
+            route.continue_()
         expect(page.get_by_role("heading", name="with files")).to_be_visible()
         assert len(call(server, "GET", f"/api/threads?area_id={area['id']}", human)["threads"]) == 1
     finally:
@@ -564,7 +579,7 @@ def test_area_sidebar_and_quick_vote_from_list(server, browser):
     thread = make_thread(server, human, area["id"], "vote me")
     closed = make_thread(server, human, area["id"], "done one")
     call(server, "POST", f"/api/threads/{closed['id']}/close", human, {"reason": "completed"})
-    ctx = browser.new_context(viewport={"width": 1280, "height": 800})
+    ctx = browser.new_context(viewport={"width": 1280, "height": 800}, reduced_motion="reduce")
     page = ctx.new_page()
     login(page, server, human)
     try:
@@ -597,6 +612,7 @@ def test_list_score_colors_and_debounced_importance_resort(server, browser):
     call(server, "POST", f"/api/messages/{top['op_message_id']}/votes", human, {"delta": 1})
     ctx, page = open_page(browser, server, human)
     try:
+        page.clock.install()
         page.goto(f"{server}/#/area/rank")
         titles = page.locator(".li.thread a.t")
         expect(titles).to_have_text(["top one", "low one"])
@@ -612,7 +628,8 @@ def test_list_score_colors_and_debounced_importance_resort(server, browser):
         up.click()
         expect(low_score).to_have_text("2")
         expect(titles).to_have_text(["top one", "low one"])  # not yet: debounce pending
-        expect(titles).to_have_text(["low one", "top one"], timeout=5000)
+        page.clock.fast_forward(2001)
+        expect(titles).to_have_text(["low one", "top one"])
         for _ in range(4):
             up.click()
         expect(low_score).to_have_text("6")
@@ -691,7 +708,7 @@ def test_thread_page_op_block_and_reply_count(server, browser):
 
 def test_theme_toggle_persists_and_system_follows_scheme(server, browser):
     human, _ = seed_users(server)
-    ctx = browser.new_context(color_scheme="light")
+    ctx = browser.new_context(color_scheme="light", reduced_motion="reduce")
     page = ctx.new_page()
     try:
         login(page, server, human)
@@ -1230,16 +1247,17 @@ def test_attention_badge_update_keeps_nav_focus(server, browser):
     call(server, "POST", f"/api/threads/{thread['id']}/messages", agent, {"body": "hi @hanna", "parent_id": thread["op_message_id"]})
     ctx, page = open_page(browser, server, human)
     try:
-        def slow(route):
-            time.sleep(1.5)
-            route.continue_()
-
-        page.route("**/api/attention?*", slow)
-        page.goto(f"{server}/#/users")
+        held = []
+        page.route("**/api/attention?*", lambda route: held.append(route), times=1)
+        with page.expect_request("**/api/attention?*"):
+            page.goto(f"{server}/#/users")
+        wait_until_held(page, held)
         expect(page.get_by_role("heading", name="Users")).to_be_visible()
         link = page.locator("#nav a", has_text="Users")
         link.focus()
         page.evaluate("document.querySelector('#nav a[href=\"#/users\"]').dataset.keep = '1'")
+        for route in held:
+            route.continue_()
         expect(page.locator("#nav .navcount")).to_have_text("1")
         expect(link).to_be_focused()
         expect(link).to_have_attribute("data-keep", "1")
@@ -1261,6 +1279,9 @@ def test_back_closes_palette_and_action_returns_focus(server, browser):
         page.go_back()
         expect(page.locator("#bartitle")).to_have_text("Areas")
         expect(palette).to_have_count(0)
+        # the page title changes at once, but the view finishes later and focuses <main>
+        expect(page.get_by_role("heading", name="Areas")).to_be_visible()
+        expect(page.locator("#main")).to_be_focused()
 
         # a theme action neither navigates nor opens a dialog: focus goes back
         sidebar_search = page.get_by_role("button", name="Search", exact=True)

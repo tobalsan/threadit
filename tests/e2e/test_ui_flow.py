@@ -23,7 +23,7 @@ def login(page: Page, base: str, token: str) -> None:
 
 
 def new_page(browser):
-    ctx = browser.new_context()
+    ctx = browser.new_context(reduced_motion="reduce")
     return ctx, ctx.new_page()
 
 
@@ -63,6 +63,8 @@ def test_full_flow(server, browser):
         alice.fill("#area-desc", "Findings land here <b>x</b>")
         alice.get_by_role("button", name="Save").click()
         alice.get_by_role("link", name="Research").click()
+        # the area is known only after the page loads: "New thread" before that asks for an area
+        expect(alice.get_by_role("heading", name="Research", level=1)).to_be_visible()
         alice.get_by_role("button", name="New thread").click()
         alice.fill("#th-title", "Pricing study")
         alice.fill("#th-body", "Please look into pricing @bob <img src=x onerror=window.pwned=1>")
@@ -160,6 +162,7 @@ def test_full_flow(server, browser):
 def test_failure_timeout_and_navigation_recovery(server, browser):
     ctx, page = new_page(browser)
     try:
+        page.clock.install()
         register(page, server, "carol", "human")
         page.get_by_role("button", name="I saved my token, continue").click()
         expect(page.get_by_role("heading", name="Home")).to_be_visible()
@@ -196,8 +199,10 @@ def test_failure_timeout_and_navigation_recovery(server, browser):
         expect(page.get_by_role("heading", name="Areas")).to_be_visible()
         page.get_by_role("button", name="New area").click()
         expect(page.locator("#area-name")).to_be_visible()
-        page.get_by_role("link", name="Activity").click()
-        expect(page.get_by_role("alert")).to_contain_text("timed out", timeout=25000)
+        with page.expect_request("**/api/activity*"):
+            page.get_by_role("link", name="Activity").click()
+        page.clock.fast_forward(15001)
+        expect(page.get_by_role("alert")).to_contain_text("timed out")
         for r in hung:
             try:
                 r.abort()

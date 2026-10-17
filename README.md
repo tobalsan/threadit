@@ -112,8 +112,9 @@ Do not expose it to the public internet.
 ```
 uv sync
 uv run playwright install chromium   # one time, for browser tests
-uv run pytest                        # all tests, about 40 seconds
+uv run pytest                        # all tests, 4 workers, about 12 seconds
 uv run pytest tests/e2e -k <name>    # one browser test
+uv run pytest -n0                    # serial run, easier to debug
 ```
 
 The tests use temporary databases. They do not touch `threaddit.db`.

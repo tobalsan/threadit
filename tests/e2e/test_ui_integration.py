@@ -48,7 +48,7 @@ def test_area_pagination_pin_and_default_sort(server, browser):
     call(server, "PUT", f"/api/threads/{pinned['id']}/pin", human, {"pinned": True})
     for i in range(102):
         make_thread(server, human, area["id"], f"bulk {i}")
-    ctx = browser.new_context()
+    ctx = browser.new_context(reduced_motion="reduce")
     page = ctx.new_page()
     try:
         login(page, server, human)
@@ -79,7 +79,7 @@ def test_attention_pagination_and_closed_attention_is_read_only(server, browser)
     thread = make_thread(server, human, area["id"], "Busy")
     for i in range(101):
         call(server, "POST", f"/api/threads/{thread['id']}/messages", agent, {"body": f"note {i}"})
-    ctx = browser.new_context()
+    ctx = browser.new_context(reduced_motion="reduce")
     page = ctx.new_page()
     try:
         login(page, server, human)
@@ -114,7 +114,7 @@ def test_search_pagination_same_query_retry_and_context_target(server, browser):
     thread = make_thread(server, human, area["id"], "Host", "first")
     for i in range(55):
         call(server, "POST", f"/api/threads/{thread['id']}/messages", human, {"body": f"needle msg {i}"})
-    ctx = browser.new_context()
+    ctx = browser.new_context(reduced_motion="reduce")
     page = ctx.new_page()
     try:
         login(page, server, human)
@@ -141,7 +141,7 @@ def test_owner_pin_section_and_failed_actions_keep_ui_usable(server, browser):
     human, _ = seed_users(server)
     area = call(server, "POST", "/api/areas", human, {"name": "Pins", "description": "d"})
     thread = make_thread(server, human, area["id"], "Pin me")
-    ctx = browser.new_context()
+    ctx = browser.new_context(reduced_motion="reduce")
     page = ctx.new_page()
     try:
         login(page, server, human)
@@ -178,7 +178,7 @@ def test_responsive_390px_smoke(server, browser):
     human, _ = seed_users(server)
     area = call(server, "POST", "/api/areas", human, {"name": "Narrow", "description": "d"})
     thread = make_thread(server, human, area["id"], "Narrow thread")
-    ctx = browser.new_context(viewport={"width": 390, "height": 800})
+    ctx = browser.new_context(viewport={"width": 390, "height": 800}, reduced_motion="reduce")
     page = ctx.new_page()
     try:
         login(page, server, human)
@@ -188,3 +188,9 @@ def test_responsive_390px_smoke(server, browser):
             assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1"), route
     finally:
         ctx.close()
+
+
+def test_module_entrypoint_serves_board(subprocess_server):
+    human, _ = seed_users(subprocess_server)
+    area = call(subprocess_server, "POST", "/api/areas", human, {"name": "Main", "description": "d"})
+    assert call(subprocess_server, "GET", "/api/areas", human)["areas"][0]["id"] == area["id"]
