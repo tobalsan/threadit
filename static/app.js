@@ -962,13 +962,14 @@
   }
   window.addEventListener('hashchange', route);
   // ---------- home: areas ----------
-  function areaForm(area, done) {
+  function areaForm(area, done, cancel) {
     var name = el('input', { type: 'text', required: true, maxlength: 80, value: area ? area.name : '' });
     var desc = el('textarea', { maxlength: 10000 }); desc.value = area ? area.description : '';
     var err = el('div');
     var f = el('form', { class: 'card' }, el('h2', { text: area ? 'Edit area' : 'New area' }),
       field('Name', name, 'area-name'), field('Description / instructions for this area', desc, 'area-desc'), err,
-      el('button', { type: 'submit', class: 'primary', text: 'Save' }));
+      el('div', { class: 'row2' }, el('button', { type: 'button', text: 'Cancel', onclick: cancel }),
+        el('button', { type: 'submit', class: 'primary', text: 'Save' })));
     formSubmit(f, err, function () {
       var body = { name: name.value.trim(), description: desc.value };
       return api(area ? 'PATCH' : 'POST', area ? '/api/areas/' + area.id : '/api/areas', body).then(done);
@@ -999,7 +1000,7 @@
       root.appendChild(el('div', { class: 'pagehead' }, el('h1', { text: 'Areas' }),
         el('button', { type: 'button', class: 'btn', text: 'New area', onclick: function () {
           if (formSlot.firstChild) { clear(formSlot); return; }
-          formSlot.appendChild(areaForm(null, route));
+          formSlot.appendChild(areaForm(null, route, function () { clear(formSlot); }));
         } })));
       root.appendChild(formSlot);
       if (!r.areas.length) root.appendChild(el('div', { class: 'empty', text: 'No areas yet. Create the first one.' }));
@@ -1072,7 +1073,7 @@
           clear(slot); slot.dataset.k = 'e'; slot.appendChild(areaForm(area, function (a) {
             var q = location.hash.indexOf('?'), next = '#/area/' + areaRef(a) + (q >= 0 ? location.hash.slice(q) : '');
             if (location.hash === next) route(); else location.hash = next;
-          }));
+          }, function () { clear(slot); }));
         } })));
       page.appendChild(root);
       page.appendChild(el('aside', { class: 'side card', 'aria-label': 'Area description' }, el('h2', { text: 'About this area' }),

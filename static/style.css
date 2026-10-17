@@ -385,7 +385,7 @@ main:has(.with-side){max-width:1180px}
 .adrop .opt[aria-selected=true]{background:var(--accent-fill);color:#fff}
 .adrop .opt[aria-selected=true] small,.adrop .opt[aria-selected=true] .ct{color:rgba(255,255,255,.9)}
 .adrop .none{padding:12px;text-align:center;color:var(--text2)}
-.sheet .row2{display:flex;align-items:center;justify-content:flex-end;gap:8px}
+.sheet .row2,form.card .row2{display:flex;align-items:center;justify-content:flex-end;gap:8px}
 .sheet .row2 .hintx{font-size:12px;color:var(--text2);flex:1}
 
 /* signed out: the sidebar and the toolbar stay hidden */
