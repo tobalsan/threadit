@@ -57,8 +57,11 @@ def _build(conn: sqlite3.Connection, rows: list[sqlite3.Row]) -> dict[int, list[
         chunk = ids[start : start + 500]
         marks = ",".join("?" * len(chunk))
         for a in conn.execute(
-            "SELECT id, message_id, user_id, kind, body, ephemeral, created_at"
-            f" FROM agent_activities WHERE message_id IN ({marks}) ORDER BY id",
+            "SELECT id, message_id, user_id, kind, body, ephemeral, created_at FROM ("
+            "SELECT *, ROW_NUMBER() OVER ("
+            "PARTITION BY message_id, user_id ORDER BY id DESC) AS rn"
+            f" FROM agent_activities WHERE message_id IN ({marks}))"
+            f" WHERE rn <= {MAX_ACTIVITIES} ORDER BY id",
             chunk,
         ):
             activities.setdefault((a["message_id"], a["user_id"]), []).append(

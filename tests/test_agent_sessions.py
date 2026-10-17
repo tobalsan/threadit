@@ -154,3 +154,18 @@ def test_sessions_are_batched(admin, bot, area, board):
     finally:
         db.Database._connect = real_connect
     assert sum("agent_activities" in q for q in queries) == 1
+
+
+def test_only_newest_50_activities_per_session(admin, bot, item, board):
+    _, mid = item
+    now = datetime.now(timezone.utc).isoformat(timespec="microseconds")
+    conn = sqlite3.connect(board.path)
+    conn.executemany(
+        "INSERT INTO agent_activities (message_id, user_id, kind, body, created_at)"
+        " VALUES (?, ?, 'thought', ?, ?)",
+        [(mid, bot.id, f"n{i}", now) for i in range(120)],
+    )
+    conn.commit()
+    conn.close()
+    log = sessions(admin, mid)[0]["activities"]
+    assert [a["body"] for a in log] == [f"n{i}" for i in range(70, 120)]
