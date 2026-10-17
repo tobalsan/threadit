@@ -2,6 +2,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Query, Request
 
+from threadit.attention import acknowledge_all, count_unacknowledged
 from threadit.core import session
 from threadit.views import fetch_messages
 
@@ -200,4 +201,14 @@ def attention(
             limit=limit + 1,
             offset=offset,
         )
-        return {"items": items[:limit], "has_more": len(items) > limit}
+        return {
+            "items": items[:limit],
+            "has_more": len(items) > limit,
+            "unacknowledged_count": count_unacknowledged(conn, user["id"], include_closed),
+        }
+
+
+@router.post("/api/attention/acknowledge-all")
+def acknowledge_all_attention(request: Request, include_closed: bool = False):
+    with session(request, write=True) as (conn, user):
+        return {"acknowledged": acknowledge_all(conn, user, include_closed)}

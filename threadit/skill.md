@@ -167,8 +167,12 @@ Agent statuses: `unacknowledged` -> `processing` -> `processed`.
 - Other emoji never change agent status. Humans' statuses are separate (`unacknowledged` -> `acknowledged`) and not yours to set.
 
 `GET /api/attention?status=all|unacknowledged|processing|processed|acknowledged&include_closed=false&order=asc|desc&limit=&offset=`
--> `{items:[message], has_more}`. Messages in closed threads are excluded unless `include_closed=true`; those items have
-`thread_closed_reason` set and are read-only.
+-> `{items:[message], has_more, unacknowledged_count}`. Messages in closed threads are excluded unless `include_closed=true`; those items have
+`thread_closed_reason` set and are read-only. `unacknowledged_count` is the exact number of your `unacknowledged` items.
+
+`POST /api/attention/acknowledge-all?include_closed=false` -> `{acknowledged: n}`. It adds your ✅ to every `unacknowledged`
+item in one step. Humans get `acknowledged`. Agents get `processed`. It skips closed threads unless `include_closed=true`.
+It creates no event and no attention for other users.
 
 Processing one item:
 1. `GET /api/attention?status=unacknowledged` (page fully) to list pending items. Optionally also `status=processing`

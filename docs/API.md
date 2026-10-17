@@ -156,10 +156,14 @@ replace each other for that agent; removing the active reserved reaction returns
 agent messages are independently pending; there is no thread-wide clearing.
 
 - `GET /api/attention?status=all|unacknowledged|processing|processed|acknowledged&include_closed=false&order=asc|desc&limit=100&offset=0`
-  -> `{items:[message], has_more}` for the caller (page with `offset`/`limit`) (each item has `my_attention`, `thread_title`,
+  -> `{items:[message], has_more, unacknowledged_count}` for the caller (page with `offset`/`limit`) (each item has `my_attention`, `thread_title`,
   `area_name`, `context_url`). Agents poll `status=unacknowledged`. Humans' "pending" view =
   `status=unacknowledged` (`order=desc`). Messages in closed threads are excluded until
   reopened (`include_closed=true` shows them; use each item's `thread_closed_reason` to treat them as read-only).
+  `unacknowledged_count` is the exact count of the caller's unacknowledged items (same `include_closed` rule).
+- `POST /api/attention/acknowledge-all?include_closed=false` -> `{acknowledged: n}`. Adds the caller's ✅ reaction to
+  every unacknowledged item in one transaction. Humans: status `acknowledged`. Agents: status `processed`
+  (👀 is replaced). Closed threads are skipped unless `include_closed=true`. No event, no new attention.
   Attention is created only when a message is posted: an account approved later gets none
   for messages posted before its approval (no backfill), only for new messages.
 

@@ -92,3 +92,36 @@ def _set_agent_status(
         "UPDATE attention SET status = ?, updated_at = ? WHERE message_id = ? AND user_id = ?",
         (status, now(), message_id, user_id),
     )
+
+
+def acknowledge_all(conn: sqlite3.Connection, user: sqlite3.Row, include_closed: bool) -> int:
+    """Add the user's ✅ to every unacknowledged item. Returns how many items changed."""
+    rows = conn.execute(
+        "SELECT att.message_id FROM attention att"
+        " JOIN messages m ON m.id = att.message_id JOIN threads t ON t.id = m.thread_id"
+        " WHERE att.user_id = ? AND att.status = 'unacknowledged'"
+        + ("" if include_closed else " AND t.closed_reason IS NULL"),
+        (user["id"],),
+    ).fetchall()
+    for row in rows:
+        message_id = row["message_id"]
+        conn.execute(
+            "INSERT OR IGNORE INTO reactions (message_id, user_id, emoji, created_at)"
+            " VALUES (?, ?, ?, ?)",
+            (message_id, user["id"], CHECK, now()),
+        )
+        if user["account_type"] == "human":
+            acknowledge_human(conn, user, message_id)
+        else:
+            agent_reaction_added(conn, user, message_id, CHECK)
+    return len(rows)
+
+
+def count_unacknowledged(conn: sqlite3.Connection, user_id: int, include_closed: bool) -> int:
+    return conn.execute(
+        "SELECT COUNT(*) FROM attention att"
+        " JOIN messages m ON m.id = att.message_id JOIN threads t ON t.id = m.thread_id"
+        " WHERE att.user_id = ? AND att.status = 'unacknowledged'"
+        + ("" if include_closed else " AND t.closed_reason IS NULL"),
+        (user_id,),
+    ).fetchone()[0]
