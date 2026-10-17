@@ -1550,39 +1550,58 @@
     var incl = params.get('include_closed') === 'true';
     var root = el('div', { class: 'screen' }); root.appendChild(el('h1', { text: 'Search' }));
     var cb = el('input', { type: 'checkbox', checked: incl, onchange: function () { location.hash = '#/search' + qs({ q: q, include_closed: cb.checked ? 'true' : '' }); } });
-    root.appendChild(el('label', null, cb, ' include closed threads'));
+    root.appendChild(el('div', { class: 'ctl' }, q ? el('span', { text: 'Results for "' + q + '"' }) : null, el('label', { class: 'chk' }, cb, 'Include closed threads')));
     if (!q) { root.appendChild(el('div', { class: 'empty', text: 'Type a query in the search box.' })); return Promise.resolve(root); }
     var offsets = { areas: 0, threads: 0, messages: 0 };
+    // Wrap each case-insensitive match of the query (the API matches it as one substring) in <mark>.
+    var termRe = new RegExp(q.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+    function mark(node) {
+      if (!q.trim()) return node;
+      var walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT), texts = [], t;
+      while ((t = walker.nextNode())) texts.push(t);
+      texts.forEach(function (tn) {
+        var s = tn.nodeValue, parts = [], last = 0, m;
+        termRe.lastIndex = 0;
+        while ((m = termRe.exec(s))) {
+          parts.push(document.createTextNode(s.slice(last, m.index)), el('mark', { text: m[0] }));
+          last = m.index + m[0].length;
+        }
+        if (!parts.length) return;
+        parts.push(document.createTextNode(s.slice(last)));
+        parts.forEach(function (p) { tn.parentNode.insertBefore(p, tn); });
+        tn.parentNode.removeChild(tn);
+      });
+      return node;
+    }
     function fetchPage() {
       return api('GET', '/api/search' + qs({ q: q, include_closed: incl ? 'true' : '', limit: SEARCH_PAGE,
         areas_offset: offsets.areas, threads_offset: offsets.threads, messages_offset: offsets.messages }));
     }
     return fetchPage().then(function (r) {
-      root.appendChild(el('p', { class: 'mut', text: 'Results for "' + q + '"' }));
       if (!r.areas.length && !r.threads.length && !r.messages.length) root.appendChild(el('div', { class: 'empty', text: 'No results.' }));
       var cats = {
-        areas: { title: 'Areas', draw: function (a) { return el('div', { class: 'card' }, el('a', { href: '#/area/' + areaRef(a), text: a.name }), el('div', { class: 'body mut', text: a.snippet })); } },
-        threads: { title: 'Threads', draw: function (t) { return el('div', { class: 'card' }, el('a', { href: '#/thread/' + t.id }, renderInline(t.title, true)), ' ', modified(t), ' ', el('span', { class: 'mut', text: t.area_name }), t.closed_reason ? el('span', { class: 'badge closed', text: ' closed: ' + t.closed_reason }) : null); } },
+        areas: { title: 'Areas', draw: function (a) { return el('div', { class: 'card' }, mark(el('a', { href: '#/area/' + areaRef(a), text: a.name })), mark(el('div', { class: 'body mut', text: a.snippet }))); } },
+        threads: { title: 'Threads', draw: function (t) { return el('div', { class: 'card' }, mark(el('a', { href: '#/thread/' + t.id }, renderInline(t.title, true))), ' ', modified(t), ' ', el('span', { class: 'mut', text: t.area_name }), t.closed_reason ? el('span', { class: 'badge closed', text: ' closed: ' + t.closed_reason }) : null); } },
         messages: { title: 'Messages', draw: function (m) {
           return el('div', { class: 'card' },
-            el('div', { class: 'mut' }, m.area_name + ' › ', el('a', { href: '#/thread/' + m.thread_id }, renderInline(m.thread_title, true)), ' · ', userTag(m.author), ' · ' + fmt(m.created_at), ' ', modified(m),
+            el('div', { class: 'mut' }, m.area_name + ' › ', mark(el('a', { href: '#/thread/' + m.thread_id }, renderInline(m.thread_title, true))), ' · ', userTag(m.author), ' · ' + fmt(m.created_at), ' ', modified(m),
               m.closed_reason ? el('span', { class: 'badge closed', text: 'closed: ' + m.closed_reason }) : null),
-            el('div', { class: 'body', text: m.snippet }),
+            mark(el('div', { class: 'body', text: m.snippet })),
             el('a', { href: '#/context/' + m.id, text: 'Show context' }));
         } }
       };
       Object.keys(cats).forEach(function (k) {
         var c = cats[k];
-        c.head = el('h2', { text: c.title, class: r[k].length ? '' : 'hidden' });
-        c.list = el('div'); c.more = el('div');
-        root.appendChild(c.head); root.appendChild(c.list); root.appendChild(c.more);
+        c.list = el('div', { class: 'list' }); c.more = el('div', { class: 'pager hidden' });
+        c.box = el('section', { class: 'list' + (r[k].length ? '' : ' hidden') }, el('h2', { text: c.title }), c.list, c.more);
+        root.appendChild(c.box);
       });
       function showCat(k, page) {
         var c = cats[k];
         page[k].forEach(function (x) { c.list.appendChild(c.draw(x)); });
         offsets[k] += page[k].length;
-        if (offsets[k]) c.head.classList.remove('hidden');
-        clear(c.more);
+        if (offsets[k]) c.box.classList.remove('hidden');
+        clear(c.more); c.more.classList.toggle('hidden', !page.has_more[k]);
         if (page.has_more[k]) c.more.appendChild(el('button', { type: 'button', text: 'Load more ' + c.title.toLowerCase(), onclick: function (ev) {
           act(ev.currentTarget, function () { return fetchPage().then(function (next) { showCat(k, next); }); });
         } }));

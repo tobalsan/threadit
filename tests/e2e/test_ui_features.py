@@ -1385,3 +1385,28 @@ def test_reply_composer_refresh_area_cancel_and_activity_timeline(server, browse
         expect(page.locator(".timeline .card")).to_have_count(0)
     finally:
         ctx.close()
+
+
+def test_search_highlights_term_and_spaces_results(server, browser):
+    human, _ = seed_users(server)
+    area = call(server, "POST", "/api/areas", human, {"name": "Lab", "description": "d"})
+    thread = make_thread(server, human, area["id"], "Host", "first")
+    for body in ("call with Bertrand today", "bertrand (x) again"):
+        call(server, "POST", f"/api/threads/{thread['id']}/messages", human, {"body": body})
+    ctx, page = open_page(browser, server, human)
+    try:
+        page.goto(f"{server}/#/search?q=bertrand")
+        cards = page.locator("main .card")
+        expect(cards).to_have_count(2)
+        expect(page.locator("main mark")).to_have_text(["bertrand", "Bertrand"])
+        # empty categories leave no gap; cards do not touch
+        heading = page.get_by_role("heading", name="Messages")
+        assert heading.bounding_box()["y"] - page.locator("main .ctl").bounding_box()["y"] < 60
+        first, second = cards.nth(0).bounding_box(), cards.nth(1).bounding_box()
+        assert second["y"] - (first["y"] + first["height"]) >= 6
+        page.get_by_label("Include closed threads").check()
+        expect(page).to_have_url(f"{server}/#/search?q=bertrand&include_closed=true")
+        expect(page.locator("main mark")).to_have_count(2)
+    finally:
+        ctx.close()
+
