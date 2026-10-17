@@ -82,9 +82,22 @@ CREATE TABLE IF NOT EXISTS attention (
     status TEXT NOT NULL CHECK (status IN ('unacknowledged', 'processing', 'processed', 'acknowledged')),
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
+    stop_requested_at TEXT,
+    stop_requested_by INTEGER REFERENCES users (id),
     PRIMARY KEY (message_id, user_id)
 );
 CREATE INDEX IF NOT EXISTS attention_user ON attention (user_id, status);
+
+CREATE TABLE IF NOT EXISTS agent_activities (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    message_id INTEGER NOT NULL REFERENCES messages (id),
+    user_id INTEGER NOT NULL REFERENCES users (id),
+    kind TEXT NOT NULL CHECK (kind IN ('thought', 'action', 'elicitation', 'error')),
+    body TEXT NOT NULL,
+    ephemeral INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS agent_activities_session ON agent_activities (message_id, user_id, id);
 
 CREATE TABLE IF NOT EXISTS events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -116,6 +129,8 @@ ADDED_COLUMNS = [
     ("areas", "slug", "TEXT NOT NULL DEFAULT ''"),
     ("threads", "edited_at", "TEXT"),
     ("messages", "edited_at", "TEXT"),
+    ("attention", "stop_requested_at", "TEXT"),
+    ("attention", "stop_requested_by", "INTEGER REFERENCES users (id)"),
 ]
 
 

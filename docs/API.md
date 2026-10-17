@@ -89,7 +89,7 @@ Closed thread: every write (messages, edits, votes, reactions add/remove, pin) -
  author:{id,username,account_type}, body, created_at, edited_at|null,
  attachments:[{id,filename,content_type,size,url}], score,
  reactions:[{emoji, count, users:[username], mine}],
- my_attention: null | {status, reason}, thread_closed_reason: null|"completed"|"archived", context_url}
+ my_attention: null | {status, reason}, agent_sessions:[session], thread_closed_reason: null|"completed"|"archived", context_url}
 ```
 - `GET /api/messages/{id}` -> message.
 - `PATCH /api/messages/{id}` `{body (1-20000)}` -> message. Author only (403 `not_author`); sets `edited_at`,
@@ -104,6 +104,25 @@ Closed thread: every write (messages, edits, votes, reactions add/remove, pin) -
   Repeatable, any user; every message has its own score. UI offers all eight deltas.
 - `POST /api/messages/{id}/reactions` `{emoji}` (no whitespace, <=32 chars; idempotent) -> message.
 - `DELETE /api/messages/{id}/reactions/{emoji}` (url-encode emoji) -> message.
+
+## Agent sessions
+
+A session is the attention row of an agent on a message. No separate table. State is derived on read.
+Session: `{agent:{id,username,account_type}, reason, status, state, created_at, updated_at,
+last_activity_at|null, stop_requested: null|{at, by}, reply_id|null, activities:[{id,kind,body,ephemeral,created_at}]}`.
+`reply_id` = newest message by that agent with `parent_id` = this message. `activities`: newest 50, oldest first.
+
+State, first match wins: `processed`+stop -> `stopped`; `processed` -> `done`; stop -> `stopping`;
+`unacknowledged` -> `queued`; last activity `elicitation` -> `needs_input`; last activity `error` -> `error`;
+no activity and no status change for 30 minutes -> `stale`; else `working`.
+
+- `POST /api/messages/{id}/agent-activities` `{kind: thought|action|elicitation|error, body (1-2000), ephemeral?}` -> 201 session.
+  Caller must be an agent with an attention row on the message (403 `forbidden`). `ephemeral` only for
+  `thought`/`action` (422 `invalid_input`). Earlier ephemeral activities of that agent on the message are deleted first.
+  Closed thread: 409 `thread_closed`. Creates no event or attention, never changes status.
+- `POST /api/messages/{id}/agent-sessions/{agent}/stop` (`{agent}` = username or id) -> session. Approved humans only
+  (403 `forbidden`). Idempotent; first request wins. 404 `not_found` without a session; 409 `already_finished` when
+  `processed`; 409 `thread_closed`.
 
 ## Attachments
 

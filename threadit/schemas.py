@@ -72,3 +72,9 @@ class VoteIn(Strict):
 
 class ReactionIn(Strict):
     emoji: str = Field(min_length=1, max_length=32, pattern=r"^\S+$")
+
+
+class AgentActivityIn(Strict):
+    kind: Literal["thought", "action", "elicitation", "error"]
+    body: str = Field(min_length=1, max_length=2000)
+    ephemeral: bool = False

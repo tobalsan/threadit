@@ -4,6 +4,7 @@ import re
 import sqlite3
 
 from threadit.core import ApiError
+from threadit.sessions import fetch_sessions
 
 _MESSAGE_SQL = """
 SELECT m.id, m.thread_id, m.parent_id, m.is_op, m.body, m.created_at, m.score, m.edited_at,
@@ -211,6 +212,7 @@ def fetch_messages(
             chunk,
         ):
             attachments.setdefault(a["message_id"], []).append(attachment_json(a))
+    sessions = fetch_sessions(conn, ids)
     out = []
     for r in rows:
         mine = None
@@ -241,6 +243,7 @@ def fetch_messages(
                 "score": r["score"],
                 "reactions": grouped,
                 "my_attention": mine,
+                "agent_sessions": sessions.get(r["id"], []),
                 "thread_closed_reason": r["thread_closed_reason"],
                 "context_url": f"/api/messages/{r['id']}/context",
             }

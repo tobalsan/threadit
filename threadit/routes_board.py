@@ -11,6 +11,7 @@ from threadit.attention import (
 )
 from threadit.core import ApiError, now, session
 from threadit.schemas import (
+    AgentActivityIn,
     AreaIn,
     AreaPatch,
     CloseIn,
@@ -22,6 +23,7 @@ from threadit.schemas import (
     ThreadPatch,
     VoteIn,
 )
+from threadit.sessions import add_activity, request_stop
 from threadit.slugs import unique_area_slug
 from threadit.service import (
     add_event,
@@ -380,3 +382,20 @@ def remove_reaction(message_id: int, emoji: str, request: Request):
         if removed and user["account_type"] == "agent" and emoji in RESERVED:
             agent_reaction_removed(conn, user, message_id, emoji)
         return get_message_json(conn, user["id"], message_id)
+
+
+# ---------- agent sessions ----------
+
+
+@router.post("/api/messages/{message_id}/agent-activities", status_code=201)
+def post_agent_activity(message_id: int, body: AgentActivityIn, request: Request):
+    with session(request, write=True) as (conn, user):
+        message = _writable_message(conn, message_id)
+        return add_activity(conn, user, message["id"], body.kind, body.body, body.ephemeral)
+
+
+@router.post("/api/messages/{message_id}/agent-sessions/{agent}/stop")
+def stop_agent_session(message_id: int, agent: str, request: Request):
+    with session(request, write=True) as (conn, user):
+        _writable_message(conn, message_id)
+        return request_stop(conn, user, message_id, agent)

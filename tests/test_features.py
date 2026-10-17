@@ -346,6 +346,12 @@ def test_old_database_is_migrated(tmp_path):
     assert detail["thread"]["edited_at"] is None and detail["thread"]["area_slug"] == "big-ideas"
     message = detail["messages"][0]
     assert message["edited_at"] is None and message["attachments"] == []
+    assert message["agent_sessions"] == []
+    conn = sqlite3.connect(path)
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(attention)")}
+    assert {"stop_requested_at", "stop_requested_by"} <= cols
+    assert conn.execute("SELECT COUNT(*) FROM agent_activities").fetchone()[0] == 0
+    conn.close()
     assert client.patch(
         "/api/messages/1", json={"body": "edited"}, headers=headers
     ).json()["edited_at"]
