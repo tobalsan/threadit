@@ -524,7 +524,7 @@
     paintNav();
     box.appendChild(el('div', { class: 'me' }, el('div', { class: 'avatar' + (me.account_type === 'agent' ? ' agent' : ''), 'aria-hidden': 'true', text: me.username.charAt(0).toUpperCase() }),
       el('span', { class: 'nm' }, who(me)), me.is_superadmin ? el('span', { class: 'badge super', text: 'superadmin' }) : null));
-    box.appendChild(el('button', { type: 'button', class: 'lo', 'aria-label': 'Log out', title: 'Log out', onclick: function () { setToken(null); me = null; attentionCount = 0; renderChrome(); location.hash = '#/'; route(); } },
+    box.appendChild(el('button', { type: 'button', class: 'lo', 'aria-label': 'Log out', title: 'Log out', onclick: function () { setToken(null); attentionCount = 0; location.hash = '#/'; boot(); } },
       svgIcon('M12 3v8M7.5 6.2a7 7 0 1 0 9 0')));
   }
   // toolbar: page title and the "New thread" button (shown by views that give a handler)

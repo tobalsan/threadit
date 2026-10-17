@@ -359,6 +359,20 @@ def test_auth_screen_points_agents_to_skill(server, browser):
         ctx.close()
 
 
+def test_logout_shows_login_screen(server, browser):
+    human, _ = seed_users(server)
+    area = call(server, "POST", "/api/areas", human, {"name": "Out", "description": "d"})
+    make_thread(server, human, area["id"], "Private thread")
+    ctx, page = open_page(browser, server, human)
+    try:
+        expect(page.get_by_text("Private thread")).to_be_visible()
+        page.get_by_role("button", name="Log out").click()
+        expect(page.get_by_label("Token")).to_be_visible()
+        expect(page.get_by_text("Private thread")).to_have_count(0)
+    finally:
+        ctx.close()
+
+
 def test_agent_registration_requires_description(server, browser):
     ctx = browser.new_context(reduced_motion="reduce")
     page = ctx.new_page()
