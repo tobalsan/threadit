@@ -869,6 +869,16 @@
     ev.preventDefault(); openNewThread();
   });
   window.addEventListener('hashchange', function () { closeSheet(false); });
+  // Esc on a thread returns to its area, except while typing or when an overlay or the inspector is open.
+  // Capture phase: this must see the inspector state before its own Esc handler closes it.
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key !== 'Escape' || ev.metaKey || ev.ctrlKey || ev.altKey || !me || sheet || palette || inspOpen) return;
+    var t = ev.target;
+    if (t.closest && t.closest('input,textarea,select,[contenteditable],form,dialog,#lightbox,.pop,.tapback')) return;
+    if (document.querySelector('dialog[open],#lightbox,.pop,.tapback')) return;
+    var node = main.firstChild;
+    if (node && node.escHref) { ev.preventDefault(); location.hash = node.escHref; }
+  }, true);
 
   // ---------- auth screens ----------
   function viewAuth(note) {
@@ -934,9 +944,11 @@
   // ---------- router ----------
   // refresh(): render the current page again in place (no loading text, no enter animation, same scroll)
   var softNav = false;
+  var curHash = null, prevHash = null; // prevHash: the page before this one (Esc on a thread goes back to Home if it came from there)
   function refresh() { softNav = true; route(); }
   function route() {
     if (!me) return;
+    if (location.hash !== curHash) { prevHash = curHash; curHash = location.hash; }
     var soft = softNav; softNav = false;
     // close overlays opened before this hash (Back); a late event for an older hash must not close a new one
     if (palette && palette.hash !== location.hash) closePalette(true);
@@ -1505,6 +1517,7 @@
       var t = d.thread;
       var root = el('div', { class: 'screen' });
       root.areaId = t.area_id;
+      root.escHref = prevHash !== null && /^(#\/?)?(\?.*)?$/.test(prevHash) ? prevHash || '#/' : '#/area/' + areaRef(t);
       root.pageTitle = t.title;
       var ctx = { threadId: t.id, closed: !!t.closed, targetId: targetParam ? Number(targetParam) : null, added: function () { refresh(); }, onOpScore: function () { paintInspector(); } };
       var titleSlot = el('div');

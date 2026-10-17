@@ -1499,7 +1499,7 @@ def test_agent_sessions_render_update_live_and_keep_draft(server, browser):
         ctx.close()
 
 
-def test_agent_card_click_toggles_log(server, browser):
+def test_agent_card_click_toggles_log_and_esc_returns_to_area(server, browser):
     human, agent = seed_users(server)
     area = call(server, "POST", "/api/areas", human, {"name": "Esc Area", "description": "d"})
     thread = make_thread(server, human, area["id"], "Esc thread", "hello @agentx")
@@ -1508,6 +1508,7 @@ def test_agent_card_click_toggles_log(server, browser):
     call(server, "POST", f"/api/messages/{op}/agent-activities", agent, {"kind": "action", "body": "Checking logs"})
     ctx, page = open_page(browser, server, human)
     try:
+        page.goto(f"{server}/#/areas")  # not Home: Esc then opens the thread's area
         page.goto(f"{server}/#/thread/{thread['id']}")
         # a click anywhere on the agents card shows the log, a second click hides it
         activity = page.get_by_text("Checking logs")
@@ -1516,6 +1517,19 @@ def test_agent_card_click_toggles_log(server, browser):
         expect(activity).to_have_count(2)
         page.get_by_text("Agents", exact=True).click()
         expect(activity).to_have_count(1)
+        # Esc in the reply box only hides the box; Esc outside a text field opens the area
+        page.get_by_role("button", name="Reply to thread").click()
+        page.keyboard.press("Escape")
+        expect(page.get_by_role("button", name="Reply to thread")).to_be_visible()
+        expect(page).to_have_url(re.compile(r"#/thread/"))
+        page.keyboard.press("Escape")
+        expect(page).to_have_url(f"{server}/#/area/esc-area")
+        # a thread opened from Home goes back to Home
+        page.goto(f"{server}/#/")
+        page.get_by_role("link", name="Esc thread").click()
+        expect(page.get_by_role("button", name="Reply to thread")).to_be_visible()
+        page.keyboard.press("Escape")
+        expect(page).to_have_url(f"{server}/#/")
     finally:
         ctx.close()
 
