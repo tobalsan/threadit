@@ -129,6 +129,7 @@ ADDED_COLUMNS = [
     ("areas", "slug", "TEXT NOT NULL DEFAULT ''"),
     ("threads", "edited_at", "TEXT"),
     ("messages", "edited_at", "TEXT"),
+    ("messages", "deleted_at", "TEXT"),
     ("attention", "stop_requested_at", "TEXT"),
     ("attention", "stop_requested_by", "INTEGER REFERENCES users (id)"),
 ]

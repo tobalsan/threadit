@@ -57,7 +57,7 @@ def search(
         message_rows = conn.execute(
             "SELECT m.id, t.closed_reason FROM messages m"
             " JOIN threads t ON t.id = m.thread_id JOIN areas a ON a.id = t.area_id"
-            " WHERE m.body LIKE ? ESCAPE '\\'" + area_clause + open_clause
+            " WHERE m.deleted_at IS NULL AND m.body LIKE ? ESCAPE '\\'" + area_clause + open_clause
             + " ORDER BY m.id DESC LIMIT ? OFFSET ?",
             (pattern, *area_args, limit + 1, messages_offset),
         ).fetchall()
@@ -186,7 +186,7 @@ def attention(
     offset: int = Query(0, ge=0),
 ):
     with session(request) as (conn, user):
-        where, params = "att.message_id IS NOT NULL", []
+        where, params = "att.message_id IS NOT NULL AND m.deleted_at IS NULL", []
         if status != "all":
             where += " AND att.status = ?"
             params.append(status)

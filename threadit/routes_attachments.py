@@ -61,7 +61,9 @@ async def upload_attachment(
 def download_attachment(attachment_id: int, request: Request):
     with session(request) as (conn, _):
         row = conn.execute(
-            "SELECT filename, content_type, data FROM attachments WHERE id = ?",
+            "SELECT a.filename, a.content_type, a.data FROM attachments a"
+            " LEFT JOIN messages m ON m.id = a.message_id"
+            " WHERE a.id = ? AND m.deleted_at IS NULL",
             (attachment_id,),
         ).fetchone()
     if row is None:

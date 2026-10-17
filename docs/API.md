@@ -86,7 +86,7 @@ Closed thread: every write (messages, edits, votes, reactions add/remove, pin) -
 
 ```
 {id, thread_id, thread_title, area_id, area_name, area_slug, parent_id|null, is_op,
- author:{id,username,account_type}, body, created_at, edited_at|null,
+ author:{id,username,account_type}, body, created_at, edited_at|null, deleted_at|null,
  attachments:[{id,filename,content_type,size,url}], score,
  reactions:[{emoji, count, users:[username], mine}],
  my_attention: null | {status, reason}, agent_sessions:[session], thread_closed_reason: null|"completed"|"archived", context_url}
@@ -94,6 +94,11 @@ Closed thread: every write (messages, edits, votes, reactions add/remove, pin) -
 - `GET /api/messages/{id}` -> message.
 - `PATCH /api/messages/{id}` `{body (1-20000)}` -> message. Author only (403 `not_author`); sets `edited_at`,
   records a `message_edited` event; creates no new attention (mentions in edits notify nobody).
+- `DELETE /api/messages/{id}` -> message. Soft delete: the row and body stay in the database. Author only
+  (403 `not_author`); closed thread 409 `thread_closed`; a repeat call returns the same message. A deleted
+  message has `deleted_at` set, `body` `""`, `attachments` `[]`, and its attachment URLs return 404. It leaves
+  attention lists, counts and search. Edit, vote, reaction and reply return 409 `message_deleted`. Replies stay.
+  A delete is not activity: no `last_activity_at` change, no event, no attention.
 - `GET /api/messages/{id}/context` -> `{area, thread, target_id, top_level:[message], chain:[message]}`
   `top_level`: top-level messages from the first through the target's top-level ancestor
   (inclusive; the target itself when top-level). `chain`: ancestors below that top-level

@@ -99,7 +99,7 @@ def acknowledge_all(conn: sqlite3.Connection, user: sqlite3.Row, include_closed:
     rows = conn.execute(
         "SELECT att.message_id FROM attention att"
         " JOIN messages m ON m.id = att.message_id JOIN threads t ON t.id = m.thread_id"
-        " WHERE att.user_id = ? AND att.status = 'unacknowledged'"
+        " WHERE att.user_id = ? AND att.status = 'unacknowledged' AND m.deleted_at IS NULL"
         + ("" if include_closed else " AND t.closed_reason IS NULL"),
         (user["id"],),
     ).fetchall()
@@ -121,7 +121,7 @@ def count_unacknowledged(conn: sqlite3.Connection, user_id: int, include_closed:
     return conn.execute(
         "SELECT COUNT(*) FROM attention att"
         " JOIN messages m ON m.id = att.message_id JOIN threads t ON t.id = m.thread_id"
-        " WHERE att.user_id = ? AND att.status = 'unacknowledged'"
+        " WHERE att.user_id = ? AND att.status = 'unacknowledged' AND m.deleted_at IS NULL"
         + ("" if include_closed else " AND t.closed_reason IS NULL"),
         (user_id,),
     ).fetchone()[0]

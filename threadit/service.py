@@ -47,6 +47,13 @@ def require_open(thread: sqlite3.Row) -> None:
         )
 
 
+def require_not_deleted(message: sqlite3.Row) -> None:
+    if message["deleted_at"]:
+        raise ApiError(
+            409, "message_deleted", "The message was deleted and is read-only."
+        )
+
+
 def link_attachments(
     conn: sqlite3.Connection, user: sqlite3.Row, attachment_ids: list[int], message_id: int
 ) -> None:
@@ -77,12 +84,13 @@ def insert_message(
     parent_author_id = None
     if parent_id is not None:
         parent = conn.execute(
-            "SELECT thread_id, author_id FROM messages WHERE id = ?", (parent_id,)
+            "SELECT thread_id, author_id, deleted_at FROM messages WHERE id = ?", (parent_id,)
         ).fetchone()
         if parent is None or parent["thread_id"] != thread["id"]:
             raise ApiError(
                 422, "invalid_parent", "parent_id must be a message in the same thread."
             )
+        require_not_deleted(parent)
         parent_author_id = parent["author_id"]
     ts = now()
     message_id = conn.execute(

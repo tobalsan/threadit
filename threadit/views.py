@@ -8,6 +8,7 @@ from threadit.sessions import fetch_sessions
 
 _MESSAGE_SQL = """
 SELECT m.id, m.thread_id, m.parent_id, m.is_op, m.body, m.created_at, m.score, m.edited_at,
+       m.deleted_at,
        u.id AS author_id, u.username AS author_username, u.account_type AS author_type,
        t.title AS thread_title, t.area_id AS area_id, ar.name AS area_name, ar.slug AS area_slug,
        att.status AS att_status, att.reason AS att_reason,
@@ -29,7 +30,8 @@ SELECT t.id, t.area_id, ar.name AS area_name, ar.slug AS area_slug, t.title,
        (SELECT COUNT(*) FROM messages mm WHERE mm.thread_id = t.id) AS message_count,
        CASE WHEN t.closed_reason IS NOT NULL THEN 0 ELSE
          (SELECT COUNT(*) FROM attention att JOIN messages am ON am.id = att.message_id
-          WHERE am.thread_id = t.id AND att.user_id = ? AND att.status = 'unacknowledged')
+          WHERE am.thread_id = t.id AND am.deleted_at IS NULL
+            AND att.user_id = ? AND att.status = 'unacknowledged')
        END AS pending_attention
 FROM threads t
 JOIN areas ar ON ar.id = t.area_id
@@ -236,10 +238,11 @@ def fetch_messages(
                     "username": r["author_username"],
                     "account_type": r["author_type"],
                 },
-                "body": r["body"],
+                "body": "" if r["deleted_at"] else r["body"],
+                "deleted_at": r["deleted_at"],
                 "created_at": r["created_at"],
                 "edited_at": r["edited_at"],
-                "attachments": attachments.get(r["id"], []),
+                "attachments": [] if r["deleted_at"] else attachments.get(r["id"], []),
                 "score": r["score"],
                 "reactions": grouped,
                 "my_attention": mine,

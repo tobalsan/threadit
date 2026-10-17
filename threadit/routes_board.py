@@ -30,6 +30,7 @@ from threadit.service import (
     get_message_row,
     get_thread_row,
     insert_message,
+    require_not_deleted,
     require_open,
 )
 from threadit.views import (
@@ -274,6 +275,7 @@ def pin_thread(thread_id: int, body: PinIn, request: Request):
 def _writable_message(conn: sqlite3.Connection, message_id: int) -> sqlite3.Row:
     message = get_message_row(conn, message_id)
     require_open(get_thread_row(conn, message["thread_id"]))
+    require_not_deleted(message)
     return message
 
 
@@ -291,12 +293,27 @@ def edit_message(message_id: int, body: MessagePatch, request: Request):
         require_open(thread)
         if message["author_id"] != user["id"]:
             raise ApiError(403, "not_author", "Only the message author can edit it.")
+        require_not_deleted(message)
         conn.execute(
             "UPDATE messages SET body = ?, edited_at = ? WHERE id = ?",
             (body.body, now(), message_id),
         )
         add_event(
             conn, "message_edited", user["id"], thread["area_id"], thread["id"], message_id
+        )
+        return get_message_json(conn, user["id"], message_id)
+
+
+@router.delete("/api/messages/{message_id}")
+def delete_message(message_id: int, request: Request):
+    with session(request, write=True) as (conn, user):
+        message = get_message_row(conn, message_id)
+        require_open(get_thread_row(conn, message["thread_id"]))
+        if message["author_id"] != user["id"]:
+            raise ApiError(403, "not_author", "Only the message author can delete it.")
+        conn.execute(
+            "UPDATE messages SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL",
+            (now(), message_id),
         )
         return get_message_json(conn, user["id"], message_id)
 

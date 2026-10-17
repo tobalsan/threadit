@@ -347,9 +347,12 @@ def test_old_database_is_migrated(tmp_path):
     message = detail["messages"][0]
     assert message["edited_at"] is None and message["attachments"] == []
     assert message["agent_sessions"] == []
+    assert message["deleted_at"] is None
     conn = sqlite3.connect(path)
     cols = {r[1] for r in conn.execute("PRAGMA table_info(attention)")}
     assert {"stop_requested_at", "stop_requested_by"} <= cols
+    message_cols = {r[1] for r in conn.execute("PRAGMA table_info(messages)")}
+    assert "deleted_at" in message_cols
     assert conn.execute("SELECT COUNT(*) FROM agent_activities").fetchone()[0] == 0
     conn.close()
     assert client.patch(
