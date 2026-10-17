@@ -1547,3 +1547,86 @@ def test_late_thread_response_does_not_start_polling(server, browser):
         assert len(polled) == 1
     finally:
         ctx.close()
+
+
+def seed_attention(server, count):
+    human, agent = seed_users(server)
+    area = call(server, "POST", "/api/areas", human, {"name": "Inbox", "description": "d"})
+    thread = make_thread(server, agent, area["id"], "Pings", "first ping")
+    for i in range(1, count):
+        call(server, "POST", f"/api/threads/{thread['id']}/messages", agent, {"body": f"ping {i + 1}"})
+    return human, agent, thread
+
+
+def test_attention_mark_all_asks_first_and_updates_live(server, browser):
+    human, _, _ = seed_attention(server, 3)
+    ctx, page = open_page(browser, server, human)
+    try:
+        page.goto(f"{server}/#/attention")
+        nav_link = page.get_by_role("navigation", name="Main").get_by_role("link", name="Attention")
+        expect(page.get_by_role("button", name="Mark as seen")).to_have_count(3)
+        expect(nav_link.locator(".navcount")).to_have_text("3")
+        page.get_by_role("button", name="Mark all seen").click()
+        dialog = page.get_by_role("dialog", name="Mark all as seen?")
+        expect(dialog).to_contain_text("3 items")
+        dialog.get_by_role("button", name="Cancel").click()
+        expect(dialog).to_have_count(0)
+        expect(page.get_by_role("button", name="Mark as seen")).to_have_count(3)
+        page.get_by_role("button", name="Mark all seen").click()
+        page.get_by_role("dialog", name="Mark all as seen?").get_by_role("button", name="Mark all seen").click()
+        expect(page.get_by_text("Nothing here.")).to_be_visible()
+        expect(page.get_by_role("button", name="Mark as seen")).to_have_count(0)
+        expect(nav_link.locator(".navcount")).to_have_count(0)
+        page.get_by_label("Status").select_option("acknowledged")
+        expect(page.get_by_text("ping 3")).to_be_visible()
+    finally:
+        ctx.close()
+
+
+def test_attention_mark_one_removes_or_keeps_by_filter(server, browser):
+    human, _, _ = seed_attention(server, 2)
+    ctx, page = open_page(browser, server, human)
+    try:
+        page.goto(f"{server}/#/attention")
+        nav_link = page.get_by_role("navigation", name="Main").get_by_role("link", name="Attention")
+        expect(nav_link.locator(".navcount")).to_have_text("2")
+        page.get_by_role("button", name="Mark as seen").first.click()
+        expect(page.get_by_role("button", name="Mark as seen")).to_have_count(1)
+        expect(nav_link.locator(".navcount")).to_have_text("1")
+        page.get_by_label("Status").select_option("all")
+        expect(page.get_by_role("button", name="Mark as seen")).to_have_count(1)
+        page.get_by_role("button", name="Mark as seen").click()
+        expect(page.get_by_role("button", name="Mark as seen")).to_have_count(0)
+        expect(page.get_by_text("attention: acknowledged")).to_have_count(2)
+        expect(nav_link.locator(".navcount")).to_have_count(0)
+    finally:
+        ctx.close()
+
+
+def test_attention_check_reaction_updates_list(server, browser):
+    human, _, _ = seed_attention(server, 1)
+    ctx, page = open_page(browser, server, human)
+    try:
+        page.goto(f"{server}/#/attention")
+        nav_link = page.get_by_role("navigation", name="Main").get_by_role("link", name="Attention")
+        expect(nav_link.locator(".navcount")).to_have_text("1")
+        page.get_by_role("button", name="React", exact=False).first.click()
+        page.get_by_role("menuitem", name="React ✅").click()
+        expect(page.get_by_text("Nothing here.")).to_be_visible()
+        expect(nav_link.locator(".navcount")).to_have_count(0)
+    finally:
+        ctx.close()
+
+
+def test_mark_as_seen_button_only_on_attention_page(server, browser):
+    human, _, thread = seed_attention(server, 2)
+    ctx, page = open_page(browser, server, human)
+    try:
+        page.goto(f"{server}/#/attention")
+        expect(page.get_by_role("button", name="Mark as seen").first).to_be_visible()
+        page.goto(f"{server}/#/thread/{thread['id']}")
+        expect(page.get_by_text("ping 2")).to_be_visible()
+        expect(page.get_by_role("button", name="Mark as seen")).to_have_count(0)
+        expect(page.get_by_role("button", name="Mark all seen")).to_have_count(0)
+    finally:
+        ctx.close()

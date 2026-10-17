@@ -469,6 +469,7 @@
     Attention: ['#ff375f', 'M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 21h4'], Activity: ['#30a14e', 'M3 12h4l3-8 4 16 3-8h4'],
     Users: ['#bf5af2', 'M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM2 20c0-4 3-6 7-6s7 2 7 6M17 5a3 3 0 0 1 0 6M19 14c2 .7 3 2.5 3 5'],
     Admin: ['#7c7c82', 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z'] };
+  var CHECK_PATH = 'M5 12.5l4.5 4.5L19 7.5';
   function svgIcon(d) {
     var svg = document.createElementNS(SVG_NS, 'svg');
     var path = document.createElementNS(SVG_NS, 'path');
@@ -1284,6 +1285,8 @@
     var replySlot = el('div');
     var agentsSlot = agentsBlock(m, ctx);
     var editing = false;
+    function changed() { if (ctx.onAttention) ctx.onAttention(m); }
+    function reactHere(emoji, mine) { return react(m, emoji, mine, paint).then(changed); }
     var draft = null;
     function editForm() {
       var ta = el('textarea', { required: true, maxlength: 20000, 'aria-label': 'Edit message' }); ta.value = m.body;
@@ -1307,6 +1310,11 @@
       body.className = 'msgbody msgcard' + (pending ? ' pending' : '');
       clear(body);
       if (m.is_op) body.appendChild(el('div', { class: 'oplabel', text: 'Original post' }));
+      if (ctx.markable && attn && (attn.status === 'unacknowledged' || (attn.status === 'processing' && me.account_type === 'agent')) && !closed) {
+        body.appendChild(el('button', { type: 'button', class: 'markseen', 'aria-label': 'Mark as seen', title: 'Mark as seen', onclick: function (ev) {
+          act(ev.currentTarget, function () { return api('POST', '/api/messages/' + m.id + '/reactions', { emoji: '✅' }).then(function (nm) { m.reactions = nm.reactions; m.my_attention = nm.my_attention; paint(); changed(); }); });
+        } }, svgIcon(CHECK_PATH)));
+      }
       var stepper = el('div', { class: 'vote h', role: 'group', 'aria-label': 'Vote' });
       DELTAS.forEach(function (d) {
         stepper.appendChild(el('button', { type: 'button', disabled: closed, 'aria-label': 'Vote ' + (d > 0 ? '+' : '') + d, text: (d > 0 ? '+' : '') + d, onclick: function (ev) {
@@ -1330,7 +1338,7 @@
       m.reactions.forEach(function (r) {
         chips.appendChild(el('button', { type: 'button', class: 'rx chip' + (r.mine ? ' mine' : ''), 'aria-pressed': r.mine ? 'true' : 'false', disabled: closed,
           title: r.users.join(', '), text: r.emoji + ' ' + r.count, onclick: function (ev) {
-            act(ev.currentTarget, function () { return react(m, r.emoji, r.mine, paint); });
+            act(ev.currentTarget, function () { return reactHere(r.emoji, r.mine); });
           } }));
       });
       foot.appendChild(chips);
@@ -1340,7 +1348,7 @@
           var btn = ev.currentTarget;
           function pick(emoji, mine) {
             closePop(false);
-            act(null, function () { return react(m, emoji, mine, paint); }).then(function () { var nb = body.querySelector('.reactbtn'); if (nb) nb.focus(); });
+            act(null, function () { return reactHere(emoji, mine); }).then(function () { var nb = body.querySelector('.reactbtn'); if (nb) nb.focus(); });
           }
           var custom = el('input', { type: 'text', maxlength: 32, size: 6, placeholder: '+emoji', 'aria-label': 'Custom emoji reaction' });
           custom.addEventListener('keydown', function (e2) {
@@ -1390,13 +1398,16 @@
   // ---------- cancel guard ----------
   // A small modal confirm. Resolves true when the user chooses Discard.
   function confirmDiscard() {
+    return confirmDialog('Discard changes?', 'Your unsaved text and files will be lost.', 'Keep editing', 'Discard', 'danger');
+  }
+  function confirmDialog(title, text, cancelLabel, okLabel, okClass) {
     return new Promise(function (resolve) {
       var d;
       function done(v) { d.close(); d.remove(); resolve(v); }
-      var keep = el('button', { type: 'button', text: 'Keep editing', onclick: function () { done(false); } });
-      d = el('dialog', { class: 'confirm', 'aria-label': 'Discard changes?' },
-        el('h2', { text: 'Discard changes?' }), el('p', { text: 'Your unsaved text and files will be lost.' }),
-        el('div', { class: 'row2' }, keep, el('button', { type: 'button', class: 'danger', text: 'Discard', onclick: function () { done(true); } })));
+      var keep = el('button', { type: 'button', text: cancelLabel, onclick: function () { done(false); } });
+      d = el('dialog', { class: 'confirm', 'aria-label': title },
+        el('h2', { text: title }), el('p', { text: text }),
+        el('div', { class: 'row2' }, keep, el('button', { type: 'button', class: okClass, text: okLabel, onclick: function () { done(true); } })));
       d.addEventListener('cancel', function (ev) { ev.preventDefault(); done(false); });
       d.addEventListener('keydown', function (ev) { ev.stopPropagation(); });
       document.body.appendChild(d);
@@ -1610,7 +1621,20 @@
       return api('GET', '/api/attention' + qs({ status: status, include_closed: incl ? 'true' : '', order: 'desc', limit: PAGE, offset: offset }));
     }
     return fetchPage(0).then(function (r) {
-      var root = el('div', { class: 'screen' }); root.appendChild(el('h1', { text: 'Attention' }));
+      var root = el('div', { class: 'screen' });
+      var markAll = el('button', { type: 'button', class: 'markall', onclick: function (ev) {
+        act(ev.currentTarget, function () {
+          return api('GET', '/api/attention' + qs({ status: 'unacknowledged', include_closed: incl ? 'true' : '', limit: 1 })).then(function (c) {
+            var n = c.unacknowledged_count;
+            if (!n) return route();
+            return confirmDialog('Mark all as seen?', n + (n === 1 ? ' item needs' : ' items need') + ' your attention. Mark ' + (n === 1 ? 'it' : 'them all') + ' as seen?', 'Cancel', 'Mark all seen').then(function (ok) {
+              if (!ok) return null;
+              return api('POST', '/api/attention/acknowledge-all' + qs({ include_closed: incl ? 'true' : '' })).then(function () { return route(); });
+            });
+          });
+        });
+      } }, svgIcon(CHECK_PATH), 'Mark all seen');
+      root.appendChild(el('div', { class: 'pagehead' }, el('h1', { text: 'Attention' }), markAll));
       var statuses = me.account_type === 'agent' ? ['all', 'unacknowledged', 'processing', 'processed'] : ['all', 'unacknowledged', 'acknowledged'];
       var sel = el('select', { onchange: function () { location.hash = '#/attention' + qs({ status: sel.value, include_closed: incl ? 'true' : '' }); } },
         statuses.map(function (s) { return el('option', { value: s, text: s, selected: s === status }); }));
@@ -1623,7 +1647,14 @@
       function showPage(page) {
         page.items.forEach(function (m) {
           var box = el('div', { class: 'card' });
-          var ctx = { closed: false, added: route };
+          var ctx = { closed: false, added: route, markable: true, onAttention: function (nm) {
+            refreshAttentionCount();
+            var now = nm.my_attention && nm.my_attention.status;
+            if (status !== 'all' && now !== status && (now === 'acknowledged' || now === 'processed')) {
+              box.remove();
+              if (!list.firstChild && !more.firstChild) root.insertBefore(el('div', { class: 'empty', text: 'Nothing here.' }), list);
+            }
+          } };
           box.appendChild(el('div', { class: 'mut' }, m.area_name + ' › ', el('a', { href: '#/thread/' + m.thread_id }, renderInline(m.thread_title, true)), ' · reason: ' + (m.my_attention ? m.my_attention.reason : ''), ' ',
             m.thread_closed_reason ? el('span', { class: 'badge closed', text: 'closed: ' + m.thread_closed_reason }) : null, ' ',
             m.thread_closed_reason ? el('a', { href: '#/thread/' + m.thread_id, text: 'Reopen thread' }) : null));
