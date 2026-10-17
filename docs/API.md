@@ -163,7 +163,7 @@ agent messages are independently pending; there is no thread-wide clearing.
   `unacknowledged_count` is the exact count of the caller's unacknowledged items (same `include_closed` rule).
 - `POST /api/attention/acknowledge-all?include_closed=false` -> `{acknowledged: n}`. Adds the caller's ✅ reaction to
   every unacknowledged item in one transaction. Humans: status `acknowledged`. Agents: status `processed`
-  (👀 is replaced). Closed threads are skipped unless `include_closed=true`. No event, no new attention.
+  (✅ replaces 👀). It skips closed threads unless `include_closed=true`. No event, no new attention.
   Attention is created only when a message is posted: an account approved later gets none
   for messages posted before its approval (no backfill), only for new messages.
 

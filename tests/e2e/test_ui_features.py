@@ -1583,6 +1583,21 @@ def test_attention_mark_all_asks_first_and_updates_live(server, browser):
         ctx.close()
 
 
+def test_attention_load_more_after_mark_one_keeps_last_item(server, browser):
+    human, _, _ = seed_attention(server, 101)
+    ctx, page = open_page(browser, server, human)
+    try:
+        page.goto(f"{server}/#/attention")
+        expect(page.get_by_role("button", name="Mark as seen")).to_have_count(100)
+        page.get_by_role("button", name="Mark as seen").first.click()
+        expect(page.get_by_role("button", name="Mark as seen")).to_have_count(99)
+        page.get_by_role("button", name="Load more").click()
+        expect(page.get_by_role("button", name="Mark as seen")).to_have_count(100)
+        expect(page.get_by_text("first ping")).to_be_visible()
+    finally:
+        ctx.close()
+
+
 def test_attention_mark_one_removes_or_keeps_by_filter(server, browser):
     human, _, _ = seed_attention(server, 2)
     ctx, page = open_page(browser, server, human)
