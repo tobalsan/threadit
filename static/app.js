@@ -1587,21 +1587,32 @@
     message_edited: 'edited a message in', thread_edited: 'edited thread', thread_closed: 'closed thread', thread_reopened: 'reopened thread', thread_pinned: 'pinned thread', thread_unpinned: 'unpinned thread' };
   function viewActivity() {
     var root = el('div', { class: 'screen' }); root.appendChild(el('h1', { text: 'Activity' }));
-    var list = el('div', { class: 'list' }); var more = el('div', { class: 'pager' }); root.appendChild(list); root.appendChild(more);
-    var lastId = null;
+    var list = el('ol', { class: 'timeline' }); var more = el('div', { class: 'pager' }); root.appendChild(list); root.appendChild(more);
+    var lastId = null, lastDay = null, thisYear = new Date().getFullYear();
+    // left column: the date once per day (month over day), then the time of each event
+    function when(iso) {
+      var d = new Date(iso), day = d.toDateString(), first = day !== lastDay;
+      lastDay = day;
+      var mo = d.toLocaleDateString(undefined, { month: 'short' }).toUpperCase() + (d.getFullYear() !== thisYear ? ' ' + d.getFullYear() : '');
+      return el('div', { class: 'when' },
+        first ? el('span', { class: 'day' }, el('span', { class: 'mo', text: mo }), el('span', { class: 'dy', text: String(d.getDate()) })) : null,
+        el('time', { datetime: iso, title: fmt(iso), text: d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) }));
+    }
     function load() {
       clear(more); more.appendChild(el('div', { class: 'loading', text: 'Loading…' }));
       return api('GET', '/api/activity' + qs({ limit: 50, before_id: lastId })).then(function (r) {
         clear(more);
-        if (!r.events.length && lastId === null) list.appendChild(el('div', { class: 'empty', text: 'No activity yet.' }));
+        if (!r.events.length && lastId === null) root.replaceChild(el('div', { class: 'empty', text: 'No activity yet.' }), list);
         r.events.forEach(function (e) {
           lastId = e.id;
           var href = e.message_id ? '#/context/' + e.message_id
             : e.thread_id ? '#/thread/' + e.thread_id : e.area_id ? '#/area/' + areaRef(e) : '#/';
-          list.appendChild(el('div', { class: 'card' },
-            el('div', null, userTag(e.actor), ' ' + (KIND[e.kind] || e.kind) + ' ', el('a', { href: href, text: e.thread_title || e.area_name || 'item' }),
-              e.kind === 'thread_closed' && e.detail ? ' (' + e.detail + ')' : ''),
-            el('div', { class: 'mut', text: (e.area_name || '') + ' · ' + fmt(e.created_at) })));
+          var w = when(e.created_at);
+          list.appendChild(el('li', { class: 'tl k-' + e.kind + (w.querySelector('.day') ? ' newday' : '') }, w,
+            el('span', { class: 'dot', 'aria-hidden': 'true' }),
+            el('div', { class: 'what' },
+              el('div', null, who(e.actor), ' ' + (KIND[e.kind] || e.kind) + ' ', el('a', { href: href, text: e.thread_title || e.area_name || 'item' })),
+              el('div', { class: 'where', text: (e.area_name || '') + (e.kind === 'thread_closed' && e.detail ? ' · ' + e.detail : '') }))));
         });
         if (r.events.length >= 50) more.appendChild(el('button', { type: 'button', text: 'Load more', onclick: function (ev) { act(ev.currentTarget, load); } }));
       }).catch(function (e) { clear(more); more.appendChild(errBox(e, function () { load(); })); });

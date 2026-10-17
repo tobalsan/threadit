@@ -437,3 +437,21 @@ dialog.confirm p{margin:0 0 14px;color:var(--text2);font-size:13.5px}
 dialog.confirm .row2{display:flex;justify-content:flex-end;gap:8px}
 button.danger{background:#d70015;color:#fff;box-shadow:none}
 button.danger:hover{background:#b80012}
+
+/* activity timeline: no cards, text on the background */
+.timeline{list-style:none;margin:4px 0 0;padding:0;position:relative}
+.timeline::before{content:"";position:absolute;left:83.5px;top:10px;bottom:10px;width:1px;background:color-mix(in srgb,var(--text) 16%,transparent)}
+.tl{display:grid;grid-template-columns:72px 24px 1fr;padding:5px 0;align-items:start}
+.tl.newday:not(:first-child){margin-top:14px}
+.tl .when{text-align:right;font-size:12px;line-height:20px;color:var(--text2);font-variant-numeric:tabular-nums}
+.tl .day{display:block;margin-bottom:2px}
+.tl .mo{display:block;font-size:10.5px;line-height:14px;font-weight:700;letter-spacing:.06em;color:var(--red)}
+.tl .dy{display:block;font-size:22px;line-height:26px;font-weight:750;color:var(--text);letter-spacing:-.02em}
+.tl .dot{position:relative;justify-self:center;width:9px;height:9px;margin-top:6px;border-radius:50%;background:var(--accent)}
+.tl.newday .dot{margin-top:48px}
+.tl.k-thread_closed .dot{background:var(--text3)}
+.tl .what{font-size:14px;line-height:20px;min-width:0;padding-left:2px}
+.tl.newday .what{padding-top:42px}
+.tl .what a{color:var(--link);font-weight:600;text-decoration:none}
+.tl .what a:hover{text-decoration:underline}
+.tl .where{font-size:12px;color:var(--text2)}
