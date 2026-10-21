@@ -10,6 +10,8 @@
   var INLINE_IMAGES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
   var DELTAS = [-5, -1, 1, 5];
   var RESORT_DELAY_MS = 2000;
+  var ATTENTION_REFRESH_DELAY_MS = 300;
+  var ATTENTION_POLL_MS = 15000;
   var QUICK = ['👀', '✅', '👍', '❤️', '🎉'];
   var main = document.getElementById('main');
   var me = null;
@@ -61,6 +63,8 @@
             var er = data && data.error ? data.error : {};
             throw new ApiError(r.status, er.code || 'http_' + r.status, er.message || 'Request failed (' + r.status + ')');
           }
+          // any write (reaction, reply, acknowledge) can change the attention badge
+          if (method !== 'GET') scheduleAttentionRefresh();
           return data;
         });
       })
@@ -485,12 +489,24 @@
   var attentionCount = 0;
   function refreshAttentionCount() {
     if (!me) return;
+    // requests can overlap: keep only the latest answer for the current account
+    var seq = ++attentionSeq, tok = getToken();
     api('GET', '/api/attention' + qs({ status: 'unacknowledged', limit: PAGE })).then(function (r) {
+      if (seq !== attentionSeq || tok !== getToken()) return;
       attentionCount = r.items.length + (r.has_more ? 1 : 0);
       attentionHasMore = r.has_more;
       if (me) paintAttentionBadge();
     }).catch(function () { /* the badge is optional */ });
   }
+  var attentionSeq = 0;
+  var attentionRefreshTimer = null;
+  function scheduleAttentionRefresh() {
+    clearTimeout(attentionRefreshTimer);
+    attentionRefreshTimer = setTimeout(refreshAttentionCount, ATTENTION_REFRESH_DELAY_MS);
+  }
+  // pick up new mentions and replies from other users while the tab is visible
+  setInterval(function () { if (!document.hidden) refreshAttentionCount(); }, ATTENTION_POLL_MS);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) refreshAttentionCount(); });
   var attentionHasMore = false;
   function paintNav() {
     var nav = document.getElementById('nav');

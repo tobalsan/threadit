@@ -1634,6 +1634,58 @@ def seed_attention(server, count):
     return human, agent, thread
 
 
+def test_attention_badge_follows_thread_reactions_and_new_mentions(server, browser):
+    human, agent, thread = seed_attention(server, 2)
+    call(server, "POST", f"/api/threads/{thread['id']}/messages", agent, {"body": "no mention, no badge"})
+    ctx = browser.new_context(reduced_motion="reduce")
+    page = ctx.new_page()
+    try:
+        page.clock.install()
+        login(page, server, human)
+        nav = page.get_by_role("navigation", name="Main")
+        expect(nav.get_by_role("link", name="Attention, 2 need your attention")).to_be_visible()
+        page.goto(f"{server}/#/thread/{thread['id']}")
+        expect(page.get_by_text("ping 2")).to_be_visible()
+        page.get_by_role("button", name="☺ React").first.click()
+        page.get_by_role("menuitem", name="React 👍").click()
+        expect(nav.get_by_role("link", name="Attention, 1 need your attention")).to_be_visible()
+        # a new mention from another user shows without navigation
+        call(server, "POST", f"/api/threads/{thread['id']}/messages", agent, {"body": "ping 3 @hanna"})
+        page.clock.run_for(16000)
+        expect(nav.get_by_role("link", name="Attention, 2 need your attention")).to_be_visible()
+    finally:
+        ctx.close()
+
+
+def test_attention_badge_ignores_a_late_older_count(server, browser):
+    human, _, thread = seed_attention(server, 2)
+    ctx, page = open_page(browser, server, human)
+    held = []
+    try:
+        page.goto(f"{server}/#/thread/{thread['id']}")
+        nav = page.get_by_role("navigation", name="Main")
+        expect(nav.get_by_role("link", name="Attention, 2 need your attention")).to_be_visible()
+        # hold the next count request: it answers "2" after the newer request answers "1"
+        def hold_first(route):
+            if held:
+                route.continue_()
+            else:
+                held.append((route, route.fetch()))
+
+        page.route("**/api/attention?status=unacknowledged*", hold_first)
+        page.evaluate("document.dispatchEvent(new Event('visibilitychange'))")
+        wait_until_held(page, held)
+        page.get_by_role("button", name="☺ React").first.click()
+        page.get_by_role("menuitem", name="React 👍").click()
+        expect(nav.get_by_role("link", name="Attention, 1 need your attention")).to_be_visible()
+        route, stale = held[0]
+        route.fulfill(response=stale)
+        page.wait_for_timeout(500)
+        expect(nav.get_by_role("link", name="Attention, 1 need your attention")).to_be_visible()
+    finally:
+        ctx.close()
+
+
 def test_attention_mark_all_asks_first_and_updates_live(server, browser):
     human, _, _ = seed_attention(server, 3)
     ctx, page = open_page(browser, server, human)
