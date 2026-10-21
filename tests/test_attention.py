@@ -47,8 +47,7 @@ def test_top_level_reply_is_peer_not_notifying_op_author(admin, bot, area):
     d = admin.make_thread(area["id"], "t", "op")
     reply = bot.say(d["thread"]["id"], "top-level peer")
     assert status_of(bot, d["messages"][0]["id"]) is None
-    # (op author is human admin: gets agent_message, not a reply notification to a bot)
-    assert status_of(admin, reply["id"])["reason"] == "agent_message"
+    assert status_of(admin, reply["id"]) is None  # unmentioned agent peer: no notification
 
 
 def test_agent_status_transitions_only_for_reserved_emoji(admin, bot, area):
@@ -102,21 +101,23 @@ def test_agent_status_filters(admin, bot, area):
     assert bot.get("/api/attention", params={"status": "bogus"}).status_code == 422
 
 
-def test_every_agent_message_needs_every_human(admin, alice, bob, bot, bot2, area):
+def test_agent_messages_notify_humans_only_via_mention_or_direct_reply(admin, alice, bob, bot, bot2, area):
     d = admin.make_thread(area["id"], "t", "human op")
-    tid = d["thread"]["id"]
+    tid, op = d["thread"]["id"], d["messages"][0]["id"]
     top = bot.say(tid, "agent top-level, no mention")
     nested = bot2.say(tid, "agent to agent nested", top["id"])
-    deeper = bot.say(tid, "nested again", nested["id"])
     for human in (admin, alice, bob):
-        for m in (top, nested, deeper):
-            assert status_of(human, m["id"])["status"] == "unacknowledged"
-    # agent OP too
-    op = bot.make_thread(area["id"], "agent thread", "agent op")["messages"][0]["id"]
-    assert all(status_of(h, op)["status"] == "unacknowledged" for h in (admin, alice, bob))
-    assert status_of(bot, op) is None
-    # pending accounts get nothing and approved-later ones are not back-filled
-    assert len(admin.attention("unacknowledged")) >= 4
+        for m in (top, nested):
+            assert status_of(human, m["id"]) is None
+    reply = bot.say(tid, "agent answers admin", op)
+    assert status_of(admin, reply["id"]) == {"status": "unacknowledged", "reason": "reply"}
+    assert status_of(alice, reply["id"]) is None and status_of(bob, reply["id"]) is None
+    ment = bot.say(tid, "fyi @alice", top["id"])
+    assert status_of(alice, ment["id"]) == {"status": "unacknowledged", "reason": "mention"}
+    assert status_of(admin, ment["id"]) is None and status_of(bob, ment["id"]) is None
+    # agent OP notifies nobody without a mention
+    agent_op = bot.make_thread(area["id"], "agent thread", "agent op")["messages"][0]["id"]
+    assert all(status_of(h, agent_op) is None for h in (admin, alice, bob))
 
 
 def test_human_messages_notify_humans_only_via_mention_or_direct_reply(admin, alice, bob, area):
@@ -140,9 +141,9 @@ def test_human_messages_notify_humans_only_via_mention_or_direct_reply(admin, al
 def test_human_acknowledged_by_own_emoji_only_that_message(admin, alice, bot, area):
     d = admin.make_thread(area["id"], "t", "op")
     tid = d["thread"]["id"]
-    m1 = bot.say(tid, "one")
-    m2 = bot.say(tid, "two")
-    m3 = bot.say(tid, "three")
+    m1 = bot.say(tid, "one @alice @root")
+    m2 = bot.say(tid, "two @alice @root")
+    m3 = bot.say(tid, "three @alice @root")
     # reading never acknowledges
     alice.ok("GET", f"/api/threads/{tid}")
     alice.ok("GET", f"/api/messages/{m1['id']}")
@@ -152,7 +153,7 @@ def test_human_acknowledged_by_own_emoji_only_that_message(admin, alice, bot, ar
     assert set(pending) == {m1["id"], m2["id"], m3["id"]}
     alice.react(m2["id"], "👍")  # any emoji
     assert set(alice.attention("unacknowledged")) == {m1["id"], m3["id"]}
-    assert alice.attention("acknowledged") == {m2["id"]: {"status": "acknowledged", "reason": "agent_message"}}
+    assert alice.attention("acknowledged") == {m2["id"]: {"status": "acknowledged", "reason": "mention"}}
     # per-human independence
     assert set(admin.attention("unacknowledged")) == {m1["id"], m2["id"], m3["id"]}
     # removing the emoji does not re-open
@@ -169,9 +170,9 @@ def test_human_acknowledged_by_own_emoji_only_that_message(admin, alice, bot, ar
 def test_human_acknowledged_by_direct_reply_only_that_message(admin, alice, bot, area):
     d = admin.make_thread(area["id"], "t", "op")
     tid = d["thread"]["id"]
-    m1 = bot.say(tid, "one")
-    m2 = bot.say(tid, "two")
-    child = bot.say(tid, "nested under one", m1["id"])
+    m1 = bot.say(tid, "one @alice @root")
+    m2 = bot.say(tid, "two @alice @root")
+    child = bot.say(tid, "nested under one @alice", m1["id"])
     alice.say(tid, "my reply", m1["id"])
     pend = alice.attention("unacknowledged")
     assert m1["id"] not in pend and {m2["id"], child["id"]} <= set(pend)
@@ -179,16 +180,16 @@ def test_human_acknowledged_by_direct_reply_only_that_message(admin, alice, bot,
     alice.say(tid, "peer post")
     assert {m2["id"], child["id"]} <= set(alice.attention("unacknowledged"))
     # an agent reply does not acknowledge a human's attention
-    reply_to_m2 = bot.say(tid, "agent reply", m2["id"])
+    reply_to_m2 = bot.say(tid, "agent reply @alice", m2["id"])
     assert m2["id"] in alice.attention("unacknowledged") and reply_to_m2["id"] in alice.attention("unacknowledged")
 
 
 def test_new_agent_messages_pending_independently_no_thread_clearing(admin, alice, bot, area):
     d = admin.make_thread(area["id"], "t", "op")
     tid = d["thread"]["id"]
-    first = bot.say(tid, "first")
+    first = bot.say(tid, "first @alice @root")
     alice.react(first["id"], "👍")
-    second = bot.say(tid, "second")
+    second = bot.say(tid, "second @alice @root")
     assert set(alice.attention("unacknowledged")) == {second["id"]}
     thread = alice.ok("GET", f"/api/threads/{tid}")["thread"]
     assert thread["pending_attention"] == 1  # derived from pending messages
@@ -199,7 +200,7 @@ def test_new_agent_messages_pending_independently_no_thread_clearing(admin, alic
 
 def test_attention_items_carry_context_links(admin, alice, bot, area):
     d = admin.make_thread(area["id"], "ctx thread", "op")
-    m = bot.say(d["thread"]["id"], "agent says hi")
+    m = bot.say(d["thread"]["id"], "agent says hi @alice")
     item = alice.ok("GET", "/api/attention", params={"status": "unacknowledged"})["items"][0]
     assert item["id"] == m["id"] and item["thread_title"] == "ctx thread"
     assert item["area_name"] == "Ops" and item["context_url"] == f"/api/messages/{m['id']}/context"
@@ -209,7 +210,7 @@ def test_attention_items_carry_context_links(admin, alice, bot, area):
 def test_closed_threads_excluded_from_attention_until_reopened(admin, alice, bot, area):
     d = admin.make_thread(area["id"], "t", "op @botty")
     tid, op = d["thread"]["id"], d["messages"][0]["id"]
-    m = bot.say(tid, "agent msg")
+    m = bot.say(tid, "agent msg @alice")
     assert op in bot.attention("unacknowledged") and m["id"] in alice.attention("unacknowledged")
     admin.ok("POST", f"/api/threads/{tid}/close", {"reason": "completed"})
     assert bot.attention("unacknowledged") == {} and alice.attention("unacknowledged") == {}

@@ -32,7 +32,7 @@ def test_default_thread_sort_is_importance_with_explicit_alternatives(admin, are
 
 def test_attention_paginates_and_keeps_closed_opt_in(admin, alice, bot, area):
     thread = admin.make_thread(area["id"])["thread"]
-    sent = [bot.say(thread["id"], f"m{i}")["id"] for i in range(5)]
+    sent = [bot.say(thread["id"], f"m{i} @alice")["id"] for i in range(5)]
     got, offset = [], 0
     while True:
         page = alice.ok(
@@ -91,10 +91,10 @@ def test_search_each_category_fully_reachable(admin, area):
 def test_late_approval_gets_no_backfilled_attention(board, admin, bot, area):
     late = board.register("late", "human", approve=False)
     thread = admin.make_thread(area["id"])["thread"]
-    old = bot.say(thread["id"], "before approval")
+    old = bot.say(thread["id"], "before approval @late")
     board.admin.ok("POST", f"/api/admin/users/{late.id}/approve")
     assert late.attention() == {}
-    new = bot.say(thread["id"], "after approval")
+    new = bot.say(thread["id"], "after approval @late")
     assert set(late.attention()) == {new["id"]}
     assert old["id"] not in late.attention()
 

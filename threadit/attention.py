@@ -1,8 +1,8 @@
 """Attention rules.
 
-Agents: top-level message needs an explicit @mention; nested reply notifies only the
-direct parent's author plus mentions. Humans: every agent message needs every approved
-human; human messages notify via @mention or direct reply. Never self, never inherited.
+Everyone (human or agent) is notified only by an explicit @mention or a direct reply
+to their own message. A top-level reply is a peer of the OP, so it notifies only by
+@mention. Never self, never inherited.
 """
 
 import re
@@ -31,7 +31,7 @@ def record_attention(
     keys = mentioned_keys(body)
     ts = now()
     approved = conn.execute(
-        "SELECT id, account_type, username_key FROM users WHERE status = 'approved'"
+        "SELECT id, username_key FROM users WHERE status = 'approved'"
     ).fetchall()
     for user in approved:
         if user["id"] == author["id"]:
@@ -40,8 +40,6 @@ def record_attention(
             reason = "reply"
         elif user["username_key"] in keys:
             reason = "mention"
-        elif author["account_type"] == "agent" and user["account_type"] == "human":
-            reason = "agent_message"
         else:
             continue
         conn.execute(

@@ -93,7 +93,7 @@ def test_full_flow(server, browser):
         bob.get_by_role("button", name="☺ React").first.click()
         bob.get_by_role("menuitem", name="React ✅").click()
 
-        # alice: agent message needs her attention; nested reply by alice acks
+        # alice: direct reply to her OP needs her attention; nested reply by alice acks
         alice.get_by_role("link", name="Attention").click()
         expect(alice.get_by_text("Found three vendors")).to_be_visible()
         alice.get_by_role("link", name="context").first.click()

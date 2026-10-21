@@ -78,7 +78,7 @@ def test_attention_pagination_and_closed_attention_is_read_only(server, browser)
     area = call(server, "POST", "/api/areas", human, {"name": "Ops", "description": "d"})
     thread = make_thread(server, human, area["id"], "Busy")
     for i in range(101):
-        call(server, "POST", f"/api/threads/{thread['id']}/messages", agent, {"body": f"note {i}"})
+        call(server, "POST", f"/api/threads/{thread['id']}/messages", agent, {"body": f"note {i} @hanna"})
     ctx = browser.new_context(reduced_motion="reduce")
     page = ctx.new_page()
     try:

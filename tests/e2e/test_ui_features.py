@@ -1012,7 +1012,7 @@ def test_inspector_toggle_sections_and_outside_click(server, browser):
     human, agent = seed_users(server)
     area = call(server, "POST", "/api/areas", human, {"name": "Insp", "description": "Area **rules** here"})
     thread = make_thread(server, human, area["id"], "Inspect me", "hello @agentx")
-    call(server, "POST", f"/api/threads/{thread['id']}/messages", agent, {"body": "reply from agent"})
+    call(server, "POST", f"/api/threads/{thread['id']}/messages", agent, {"body": "reply from agent @hanna"})
     ctx, page = open_page(browser, server, human)
     try:
         page.goto(f"{server}/#/thread/{thread['id']}")
@@ -1628,9 +1628,9 @@ def test_late_thread_response_does_not_start_polling(server, browser):
 def seed_attention(server, count):
     human, agent = seed_users(server)
     area = call(server, "POST", "/api/areas", human, {"name": "Inbox", "description": "d"})
-    thread = make_thread(server, agent, area["id"], "Pings", "first ping")
+    thread = make_thread(server, agent, area["id"], "Pings", "first ping @hanna")
     for i in range(1, count):
-        call(server, "POST", f"/api/threads/{thread['id']}/messages", agent, {"body": f"ping {i + 1}"})
+        call(server, "POST", f"/api/threads/{thread['id']}/messages", agent, {"body": f"ping {i + 1} @hanna"})
     return human, agent, thread
 
 
