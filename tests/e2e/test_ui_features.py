@@ -483,6 +483,7 @@ def test_attach_toggle_and_drag_drop_multiple_files(server, browser):
     ctx, page = open_page(browser, server, human)
     try:
         page.goto(f"{server}/#/thread/{thread['id']}")
+        page.get_by_role("button", name="Reply to thread").click()
         form = page.locator("form.compose")
         picker = form.get_by_label("Attach files (max 10, 10 MB each)")
         toggle = form.get_by_role("button", name="Toggle attachments")
