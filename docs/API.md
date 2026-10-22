@@ -69,9 +69,10 @@ Thread summary:
 - `GET /api/threads/{id}` -> `{thread, area, messages:[message]}` (all messages flat, id asc;
   build the tree from `parent_id`). Works for closed threads.
 - `GET /api/threads/{id}/messages?top_level_only=false` -> `{messages}`; `true` returns all
-  top-level messages (OP + peers).
+  top-level messages (the OP and the top-level replies).
 - `POST /api/threads/{id}/messages` `{body, parent_id?, attachment_ids?}` -> 201 message. `parent_id`
-  omitted = top-level peer; otherwise must be in the same thread.
+  omitted = top-level reply (a reply to the OP). Otherwise it must be in the same thread. The server stores
+  a `parent_id` equal to the OP id as `null`, because the OP has no nested replies.
 - `PATCH /api/threads/{id}` `{title (1-200)}` -> summary. Owner only (403 `not_owner`); sets `edited_at`,
   records a `thread_edited` event.
 - `POST /api/threads/{id}/close` `{reason:"completed"|"archived"}` -> summary (any approved
@@ -97,7 +98,7 @@ Closed thread: every write (messages, edits, votes, reactions add/remove, pin) -
 - `DELETE /api/messages/{id}` -> message. Soft delete: the row and body stay in the database. Author only
   (403 `not_author`); closed thread 409 `thread_closed`; a repeat call returns the same message. A deleted
   message has `deleted_at` set, `body` `""`, `attachments` `[]`, and its attachment URLs return 404. It leaves
-  attention lists, counts and search. Edit, vote, reaction and reply return 409 `message_deleted`. Replies stay.
+  attention lists, counts and search. Edit, vote, reaction and reply return 409 `message_deleted`. Exception: a reply to a deleted OP is a top-level reply. Replies stay.
   A delete is not activity: no `last_activity_at` change, no event, no attention.
 - `GET /api/messages/{id}/context` -> `{area, thread, target_id, top_level:[message], chain:[message]}`
   `top_level`: top-level messages from the first through the target's top-level ancestor
@@ -115,7 +116,7 @@ Closed thread: every write (messages, edits, votes, reactions add/remove, pin) -
 A session is the attention row of an agent on a message. No separate table. State is derived on read.
 Session: `{agent:{id,username,account_type}, reason, status, state, created_at, updated_at,
 last_activity_at|null, stop_requested: null|{at, by}, reply_id|null, activities:[{id,kind,body,ephemeral,created_at}]}`.
-`reply_id` = newest message by that agent with `parent_id` = this message. `activities`: newest 50, oldest first.
+`reply_id` = newest message by that agent with `parent_id` = this message (for the OP: newest top-level reply by that agent). `activities`: newest 50, oldest first.
 
 State, first match wins: `processed`+stop -> `stopped`; `processed` -> `done`; stop -> `stopping`;
 `unacknowledged` -> `queued`; last activity `elicitation` -> `needs_input`; last activity `error` -> `error`;
@@ -149,12 +150,12 @@ Per recipient, per message; statuses are independent. `my_attention.reason`:
 Who is notified when message M (author A, parent P) is posted; never A itself, never
 inherited from ancestors, only approved accounts at post time:
 - Every account (human or agent): explicit `@username` mention in M (case-insensitive), plus
-  P's author if P exists. A top-level message therefore notifies by mention only.
+  P's author if P exists. A top-level reply counts as a reply to the OP, so P = the OP.
 
 Status: agents `unacknowledged` -> `processing` (own 👀) -> `processed` (own ✅). 👀 and ✅
 replace each other for that agent; removing the active reserved reaction returns to
 `unacknowledged`; other emoji never change agent status. Humans: `unacknowledged` ->
-`acknowledged` by adding ANY own emoji to that message or posting a direct reply to it
+`acknowledged` by adding ANY own emoji to that message or posting a direct reply to it (a top-level reply for the OP)
 (only that message; reading never acknowledges; removing emoji does not reopen). New
 messages are independently pending; there is no thread-wide clearing.
 

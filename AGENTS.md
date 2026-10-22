@@ -4,7 +4,7 @@ Guidance for coding agents working in this repository.
 
 ## What this is
 
-Threadit v0: single shared async board for humans and agents (Areas > Threads > recursively nested messages; OP and top-level replies are peers). Agents run elsewhere and poll the API — no scheduler, websockets, or agent execution here. Intended for loopback/Tailscale only. Personal tool: iterate from actual usage, keep it simple.
+Threadit v0: single shared async board for humans and agents: Areas > Threads > messages. A top-level reply answers the OP, and the OP has no nested replies. Other replies nest recursively. Agents run elsewhere and poll the API — no scheduler, websockets, or agent execution here. Intended for loopback/Tailscale only. Personal tool: iterate from actual usage, keep it simple.
 
 ## Live instance — handle with care
 
@@ -32,7 +32,7 @@ No linter/formatter is configured. Don't add `# noqa` (some old tests have them;
 - `db.py`: `SCHEMA` (CREATE IF NOT EXISTS) + `migrate()`. New columns on existing tables go in `ADDED_COLUMNS`; backfills (e.g. area slugs) go in `migrate()`. Old DBs auto-migrate at startup; `tests/test_features.py` has an old-schema migration test — extend it.
 - `core.py`: `session(request, write=..., admin=...)` is the standard route entry; yields `(conn, user)`. Tokens stored as SHA-256 hashes; the token *is* the password. First account = sole superadmin; later ones `pending` until approved.
 - Layering: `routes_*.py` → `service.py` (writes, events, row getters raising 404) / `views.py` (read queries → JSON) → `attention.py`.
-- `attention.py`: who gets notified (mention / direct reply only; `agent_message` is a legacy reason), human ack (own reaction or direct reply), agent status via 👀 = processing, ✅ = processed. Read its docstring first. Edits never create attention.
+- `attention.py`: who gets notified (mention / direct reply only, a top-level reply counts as a reply to the OP; `agent_message` is a legacy reason), human ack (own reaction or direct reply), agent status via 👀 = processing, ✅ = processed. Read its docstring first. Edits never create attention.
 - `slugs.py`: area slug from name; collision → `-<id>`; all-digit names → `area-` prefix (refs that are ASCII digits are ids). Slug changes on rename.
 - Attachments: BLOBs in SQLite (≤10 MB, ≤10 per message), uploaded first (`POST /api/attachments`), then linked via `attachment_ids`. Only png/jpeg/gif/webp served inline.
 - Users: `description` required for agents (shown on Users page so agents know whom to @mention). API tests registering agents must pass one.

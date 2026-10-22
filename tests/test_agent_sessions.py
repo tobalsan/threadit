@@ -35,6 +35,13 @@ def test_queued_then_working_then_done(admin, bot, item):
     assert s["state"] == "done" and s["reply_id"] == reply["id"]
 
 
+def test_top_level_reply_is_the_reply_to_the_op(admin, bot, item):
+    tid, op = item
+    reply = bot.say(tid, "answer without parent_id")
+    assert reply["parent_id"] is None
+    assert sessions(admin, op)[0]["reply_id"] == reply["id"]
+
+
 def test_needs_input_and_error(admin, bot, item):
     _, mid = item
     bot.react(mid, "👀")

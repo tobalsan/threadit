@@ -73,12 +73,16 @@ def _build(conn: sqlite3.Connection, rows: list[sqlite3.Row]) -> dict[int, list[
                     "created_at": a["created_at"],
                 }
             )
+        # A top-level reply answers the OP, so it counts as a reply to the OP.
         for m in conn.execute(
-            "SELECT parent_id, author_id, MAX(id) AS reply_id FROM messages"
-            f" WHERE parent_id IN ({marks}) GROUP BY parent_id, author_id",
+            "SELECT target, author_id, MAX(id) AS reply_id FROM ("
+            "SELECT m.id, m.author_id, COALESCE(m.parent_id, op.id) AS target FROM messages m"
+            " LEFT JOIN messages op ON m.parent_id IS NULL AND m.is_op = 0"
+            " AND op.thread_id = m.thread_id AND op.is_op = 1)"
+            f" WHERE target IN ({marks}) GROUP BY target, author_id",
             chunk,
         ):
-            replies[(m["parent_id"], m["author_id"])] = m["reply_id"]
+            replies[(m["target"], m["author_id"])] = m["reply_id"]
     out: dict[int, list[dict]] = {}
     for r in rows:
         log = activities.get((r["message_id"], r["agent_id"]), [])

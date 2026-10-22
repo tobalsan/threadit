@@ -81,17 +81,29 @@ def insert_message(
     is_op: bool = False,
     attachment_ids: Sequence[int] = (),
 ) -> int:
-    parent_author_id = None
+    # A top-level reply answers the OP: it notifies and acknowledges like a direct reply to it.
+    replied_to = None
     if parent_id is not None:
         parent = conn.execute(
-            "SELECT thread_id, author_id, deleted_at FROM messages WHERE id = ?", (parent_id,)
+            "SELECT id, thread_id, author_id, deleted_at, is_op FROM messages WHERE id = ?",
+            (parent_id,),
         ).fetchone()
         if parent is None or parent["thread_id"] != thread["id"]:
             raise ApiError(
                 422, "invalid_parent", "parent_id must be a message in the same thread."
             )
-        require_not_deleted(parent)
-        parent_author_id = parent["author_id"]
+        if parent["is_op"]:
+            parent_id = None  # No nesting under the OP: store it as a top-level reply.
+        else:
+            require_not_deleted(parent)
+            replied_to = parent
+    if parent_id is None and not is_op:
+        replied_to = conn.execute(
+            "SELECT id, author_id FROM messages"
+            " WHERE thread_id = ? AND is_op = 1 AND deleted_at IS NULL",
+            (thread["id"],),
+        ).fetchone()
+    parent_author_id = replied_to["author_id"] if replied_to else None
     ts = now()
     message_id = conn.execute(
         "INSERT INTO messages (thread_id, parent_id, author_id, body, created_at, is_op)"
@@ -100,8 +112,8 @@ def insert_message(
     ).lastrowid
     link_attachments(conn, author, attachment_ids, message_id)
     record_attention(conn, message_id, author, parent_author_id, body)
-    if parent_id is not None:
-        acknowledge_human(conn, author, parent_id)
+    if replied_to is not None:
+        acknowledge_human(conn, author, replied_to["id"])
     conn.execute(
         "UPDATE threads SET last_activity_at = ? WHERE id = ?", (ts, thread["id"])
     )

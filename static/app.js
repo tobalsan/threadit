@@ -1413,11 +1413,13 @@
         } });
         var rb = el('button', { type: 'button', class: 'link', 'aria-expanded': String(!!replySlot.firstChild), text: 'Reply', onclick: function (ev) {
           var btn = ev.currentTarget;
+          // Replies to the OP are top-level: on the thread page, use the thread composer.
+          if (m.is_op && ctx.openTopReply) { ctx.openTopReply(); return; }
           if (replySlot.firstChild) { replySlot.firstChild.form.cancel(); return; }
           function closeReply() { clear(replySlot); btn.setAttribute('aria-expanded', 'false'); if (document.contains(btn)) btn.focus(); }
           var rf = composer({ draftKey: 'reply:' + m.thread_id + ':' + m.id, label: 'Reply to ' + m.author.username, sendLabel: 'Send reply',
             placeholder: 'Reply to ' + m.author.username + '… type @ to mention', onCancel: closeReply,
-            onSend: function (text, ids) { return api('POST', '/api/threads/' + m.thread_id + '/messages', { body: text, attachment_ids: ids, parent_id: m.id }).then(function (nm) { clear(replySlot); ctx.added(nm); }); } });
+            onSend: function (text, ids) { return api('POST', '/api/threads/' + m.thread_id + '/messages', { body: text, attachment_ids: ids, parent_id: m.is_op ? null : m.id }).then(function (nm) { clear(replySlot); ctx.added(nm); }); } });
           var ex = el('div', { class: 'expand' }, el('div', null, rf));
           ex.form = rf;
           replySlot.appendChild(ex); btn.setAttribute('aria-expanded', 'true');
@@ -1619,6 +1621,7 @@
       f.hidden = !f.textarea.value || !!t.closed;
       openBtn.hidden = !f.hidden;
       root.appendChild(dock);
+      ctx.openTopReply = function () { if (!t.closed) showReply(true); };
       ctx.insertReply = function (node) {
         var none = root.querySelector('.empty');
         if (none) none.remove();

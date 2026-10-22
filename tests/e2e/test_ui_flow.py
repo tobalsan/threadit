@@ -86,9 +86,10 @@ def test_full_flow(server, browser):
         bob.get_by_role("menuitem", name="React 👀").click()
         expect(bob.get_by_text("attention: processing")).to_be_visible()
         bob.get_by_role("link", name="Pricing study").click()
+        # Reply on the OP opens the thread composer: the answer is a top-level reply
         bob.get_by_role("button", name="Reply", exact=True).first.click()
-        bob.get_by_label("Reply to alice").fill("Found three vendors")
-        bob.get_by_role("button", name="Send reply").click()
+        bob.locator("#top-reply").fill("Found three vendors")
+        bob.locator("#top-reply-form").get_by_role("button", name="Send", exact=True).click()
         expect(bob.get_by_text("Found three vendors")).to_be_visible()
         bob.get_by_role("button", name="☺ React").first.click()
         bob.get_by_role("menuitem", name="React ✅").click()

@@ -725,9 +725,8 @@ def test_thread_page_op_block_and_reply_count(server, browser):
     area = call(server, "POST", "/api/areas", human, {"name": "Ops", "description": "d"})
     thread = make_thread(server, human, area["id"], "With replies", "the op text")
     empty = make_thread(server, human, area["id"], "No replies")
-    for text in ("reply one", "reply two"):
-        call(server, "POST", f"/api/threads/{thread['id']}/messages", human, {"body": text})
-    call(server, "POST", f"/api/threads/{thread['id']}/messages", human, {"body": "op child", "parent_id": thread["op_message_id"]})
+    first = [call(server, "POST", f"/api/threads/{thread['id']}/messages", human, {"body": t}) for t in ("reply one", "reply two")][0]
+    call(server, "POST", f"/api/threads/{thread['id']}/messages", human, {"body": "nested child", "parent_id": first["id"]})
     ctx, page = open_page(browser, server, human)
     try:
         page.goto(f"{server}/#/thread/{thread['id']}")
@@ -807,7 +806,7 @@ def test_thread_list_cards_show_meta_and_area_controls(server, browser):
     pinned = make_thread(server, human, area["id"], "pin me")
     call(server, "PUT", f"/api/threads/{pinned['id']}/pin", human, {"pinned": True})
     mentioned = make_thread(server, agent, area["id"], "needs hanna", "hi @hanna")
-    call(server, "POST", f"/api/threads/{mentioned['id']}/messages", human, {"body": "a reply"})
+    call(server, "POST", f"/api/threads/{mentioned['id']}/messages", agent, {"body": "a reply"})
     make_thread(server, human, area["id"], "plain one")
     ctx, page = open_page(browser, server, human)
     try:
@@ -1389,7 +1388,7 @@ def test_reply_composer_refresh_area_cancel_and_activity_timeline(server, browse
     human, agent = seed_users(server)
     area = call(server, "POST", "/api/areas", human, {"name": "Flow", "description": "d"})
     thread = make_thread(server, human, area["id"], "Flow thread", "op body")
-    call(server, "POST", f"/api/threads/{thread['id']}/messages", agent, {"body": "agent note"})
+    call(server, "POST", f"/api/threads/{thread['id']}/messages", human, {"body": "human note"})
     ctx, page = open_page(browser, server, human)
     try:
         page.goto(f"{server}/#/thread/{thread['id']}")
@@ -1404,14 +1403,14 @@ def test_reply_composer_refresh_area_cancel_and_activity_timeline(server, browse
         top.fill("\n".join(f"line {i}" for i in range(13)))
         assert top.evaluate("e => e.getBoundingClientRect().height") == 214
         # a nested reply uses the same composer; Esc asks before it discards
-        page.get_by_role("button", name="Reply", exact=True).first.click()
+        page.get_by_role("button", name="Reply", exact=True).last.click()
         nested = page.get_by_label("Reply to hanna", exact=True)
         expect(nested).to_be_focused()
         nested.fill("draft")
         nested.press("Escape")
         page.get_by_role("button", name="Discard").click()
         expect(page.locator(".compose.inline")).to_have_count(0)
-        page.get_by_role("button", name="Reply", exact=True).first.click()
+        page.get_by_role("button", name="Reply", exact=True).last.click()
         page.get_by_label("Reply to hanna", exact=True).press("Escape")
         expect(page.locator(".compose.inline")).to_have_count(0)
         expect(page.locator("dialog.confirm")).to_have_count(0)
@@ -1564,15 +1563,17 @@ def test_agent_reply_appears_live_and_keeps_reply_draft(server, browser):
     ctx, page = open_page(browser, server, human)
     try:
         page.goto(f"{server}/#/thread/{thread['id']}")
+        # Reply on the OP opens the thread composer: replies to the OP are top-level
         page.get_by_role("button", name="Reply", exact=True).first.click()
-        page.get_by_label("Reply to hanna").fill("half written")
+        page.locator("#top-reply").fill("half written")
         call(server, "POST", f"/api/messages/{op}/reactions", agent, {"emoji": "👀"})
-        call(server, "POST", f"/api/threads/{thread['id']}/messages", agent, {"body": "agent answer", "parent_id": op})
+        call(server, "POST", f"/api/threads/{thread['id']}/messages", agent, {"body": "agent answer"})
         call(server, "POST", f"/api/messages/{op}/reactions", agent, {"emoji": "✅"})
         expect(page.locator(".asession .schip")).to_have_text("Done", timeout=8000)
-        expect(page.locator(".children .msg", has_text="agent answer")).to_have_count(1)
+        expect(page.get_by_text("agent answer")).to_have_count(1)
+        expect(page.get_by_role("link", name="reply")).to_be_visible()
         expect(page.locator(f"#m{op} .rx")).to_have_text(["\u2705 1"])
-        expect(page.get_by_label("Reply to hanna")).to_have_value("half written")
+        expect(page.locator("#top-reply")).to_have_value("half written")
     finally:
         ctx.close()
 

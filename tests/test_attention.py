@@ -43,11 +43,23 @@ def test_nested_reply_notifies_only_direct_parent_author_and_mentions(admin, ali
     assert status_of(admin, child["id"]) is None  # human own msg
 
 
-def test_top_level_reply_is_peer_not_notifying_op_author(admin, bot, area):
+def test_top_level_reply_notifies_op_author(admin, bot, area):
     d = admin.make_thread(area["id"], "t", "op")
-    reply = bot.say(d["thread"]["id"], "top-level peer")
+    reply = bot.say(d["thread"]["id"], "top-level reply")
     assert status_of(bot, d["messages"][0]["id"]) is None
-    assert status_of(admin, reply["id"]) is None  # unmentioned agent peer: no notification
+    assert status_of(admin, reply["id"]) == {"status": "unacknowledged", "reason": "reply"}
+    own = admin.say(d["thread"]["id"], "OP author replies too")
+    assert status_of(admin, own["id"]) is None  # no self-notification
+
+
+def test_reply_with_op_as_parent_becomes_top_level(admin, alice, area):
+    d = admin.make_thread(area["id"], "t", "hi @alice")
+    tid, op = d["thread"]["id"], d["messages"][0]["id"]
+    reply = alice.say(tid, "answer", op)
+    assert reply["parent_id"] is None
+    assert status_of(admin, reply["id"])["reason"] == "reply"
+    # replying to the OP acknowledges the human's own attention on it
+    assert status_of(alice, op)["status"] == "acknowledged"
 
 
 def test_agent_status_transitions_only_for_reserved_emoji(admin, bot, area):
@@ -106,9 +118,10 @@ def test_agent_messages_notify_humans_only_via_mention_or_direct_reply(admin, al
     tid, op = d["thread"]["id"], d["messages"][0]["id"]
     top = bot.say(tid, "agent top-level, no mention")
     nested = bot2.say(tid, "agent to agent nested", top["id"])
+    assert status_of(admin, top["id"]) == {"status": "unacknowledged", "reason": "reply"}
     for human in (admin, alice, bob):
-        for m in (top, nested):
-            assert status_of(human, m["id"]) is None
+        assert status_of(human, nested["id"]) is None
+    assert status_of(alice, top["id"]) is None and status_of(bob, top["id"]) is None
     reply = bot.say(tid, "agent answers admin", op)
     assert status_of(admin, reply["id"]) == {"status": "unacknowledged", "reason": "reply"}
     assert status_of(alice, reply["id"]) is None and status_of(bob, reply["id"]) is None
@@ -125,11 +138,12 @@ def test_human_messages_notify_humans_only_via_mention_or_direct_reply(admin, al
     tid, op = d["thread"]["id"], d["messages"][0]["id"]
     assert status_of(alice, op) is None and status_of(bob, op) is None
     peer = alice.say(tid, "peer, no mention")
-    assert status_of(admin, peer["id"]) is None and status_of(bob, peer["id"]) is None
+    assert status_of(admin, peer["id"])["reason"] == "reply"  # OP author
+    assert status_of(bob, peer["id"]) is None
     ment = alice.say(tid, "hey @BOB and @alice")
     assert status_of(bob, ment["id"]) == {"status": "unacknowledged", "reason": "mention"}
     assert status_of(alice, ment["id"]) is None  # no self-notification
-    assert status_of(admin, ment["id"]) is None
+    assert status_of(admin, ment["id"])["reason"] == "reply"
     reply = bob.say(tid, "reply to alice's", peer["id"])
     assert status_of(alice, reply["id"])["reason"] == "reply"
     assert status_of(admin, reply["id"]) is None  # admin was not the direct parent

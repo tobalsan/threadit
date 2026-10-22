@@ -1,8 +1,8 @@
 """Attention rules.
 
 Everyone (human or agent) is notified only by an explicit @mention or a direct reply
-to their own message. A top-level reply is a peer of the OP, so it notifies only by
-@mention. Never self, never inherited.
+to their own message. A top-level reply counts as a direct reply to the OP: it notifies
+the OP author. Never self, never inherited.
 """
 
 import re

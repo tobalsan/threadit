@@ -139,3 +139,11 @@ def test_delete_is_not_activity(board, alice, area):
     assert conn.execute("SELECT COUNT(*) FROM events").fetchone()[0] == events
     assert conn.execute("SELECT COUNT(*) FROM attention").fetchone()[0] == attention
     conn.close()
+
+
+def test_reply_to_deleted_op_is_top_level(admin, alice, area):
+    d = admin.make_thread(area["id"], "t", "op")
+    tid, op = d["thread"]["id"], d["messages"][0]["id"]
+    admin.ok("DELETE", f"/api/messages/{op}")
+    reply = alice.say(tid, "still here", op)
+    assert reply["parent_id"] is None

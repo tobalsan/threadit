@@ -164,7 +164,6 @@ def test_context_pruning(admin, alice, area):
     t2a1 = alice.say(tid, "t2 grandchild", t2a["id"])
     t2a1x = admin.say(tid, "t2 great", t2a1["id"])
     t2a2 = admin.say(tid, "t2 grandchild sibling", t2a["id"])
-    op_child = admin.say(tid, "child of op", op)
     t3 = alice.say(tid, "top3 later")
     ids = lambda ms: [m["id"] for m in ms]  # noqa: E731
 
@@ -177,10 +176,7 @@ def test_context_pruning(admin, alice, area):
     assert ids(c["top_level"]) == [op, t2["id"]]
     assert ids(c["chain"]) == [t2a["id"], t2a1["id"], t2a1x["id"]]
     everything = set(ids(c["top_level"]) + ids(c["chain"]))
-    assert not everything & {t2b["id"], t2a2["id"], op_child["id"], t3["id"]}
-
-    c = admin.ok("GET", f"/api/messages/{op_child['id']}/context")
-    assert ids(c["top_level"]) == [op] and ids(c["chain"]) == [op_child["id"]]
+    assert not everything & {t2b["id"], t2a2["id"], t3["id"]}
 
     c = admin.ok("GET", f"/api/messages/{op}/context")
     assert ids(c["top_level"]) == [op] and c["chain"] == []
@@ -326,7 +322,7 @@ def test_persistence_across_restart(board, admin, alice, area):
     assert t["thread"]["closed"]["reason"] == "archived" and len(t["messages"]) == 2
     assert alice.ok("GET", "/api/me")["username"] == "alice"
     assert board.client.post("/api/login", json={"token": token_user["token"]}).status_code == 403
-    assert alice.attention("unacknowledged", include_closed=True)
+    assert admin.attention("unacknowledged", include_closed=True)
     nxt = board.client.post("/api/register", json={"username": "second", "account_type": "human"}).json()
     assert nxt["status"] == "pending"
 
