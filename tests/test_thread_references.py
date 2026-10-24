@@ -176,3 +176,10 @@ def test_backlink_ignores_fence_with_inner_backticks(admin, area):
     target = admin.make_thread(area["id"])["thread"]["id"]
     admin.make_thread(area["id"], body=f"```\na ```b\nsee #{target}\n```")
     assert _backlinks(admin, target) == []
+
+
+def test_backlink_ignores_fence_inside_quote(admin, area):
+    target = admin.make_thread(area["id"])["thread"]["id"]
+    admin.make_thread(area["id"], body=f"> ```\n> see #{target}\n> ```")
+    src = admin.make_thread(area["id"], body=f"> quoted #{target}")["thread"]["id"]
+    assert [e["thread_id"] for e in _backlinks(admin, target)] == [src]

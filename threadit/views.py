@@ -258,12 +258,14 @@ def fetch_messages(
     return out
 
 _INLINE_CODE = re.compile(r"`[^`\n]+`")
+_QUOTE_PREFIX = re.compile(r"^(?:\s*> ?)+")
 
 
 def _strip_code(body: str) -> str:
     """Blank out code the way the client markdown does: line-based fences, then inline spans."""
     out, in_fence = [], False
     for line in body.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        line = _QUOTE_PREFIX.sub("", line)  # fences inside blockquotes are code too
         if in_fence:
             in_fence = not re.match(r"```\s*$", line)
             out.append("\x00")
