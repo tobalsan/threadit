@@ -741,6 +741,14 @@
       var q = input.value.trim(), mine = ++seq;
       var req = q ? api('GET', '/api/search' + qs({ q: q, limit: PALETTE_GROUP_MAX })).then(function (r) { return r.threads; })
         : api('GET', '/api/threads' + qs({ sort: 'hot', state: 'active', limit: 4 })).then(function (r) { return r.threads; });
+      // "38" or "#38": the thread with that id comes first, closed or not
+      var idm = /^#?(\d+)$/.exec(q);
+      if (idm) {
+        var byId = api('GET', '/api/threads/' + idm[1]).then(function (d) { return d.thread; }, function () { return null; });
+        req = Promise.all([byId, req.catch(function () { return []; })]).then(function (r) {
+          return r[0] ? [r[0]].concat(r[1].filter(function (t) { return t.id !== r[0].id; })) : r[1];
+        });
+      }
       req.then(function (found) { if (mine === seq && palette) { threads = found; build(false); } }, function () { /* the other groups still work */ });
     }
     input.addEventListener('input', function () {

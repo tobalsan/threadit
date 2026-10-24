@@ -1052,6 +1052,26 @@ def test_inspector_toggle_sections_and_outside_click(server, browser):
         ctx.close()
 
 
+def test_command_palette_finds_thread_by_id(server, browser):
+    human, _ = seed_users(server)
+    area = call(server, "POST", "/api/areas", human, {"name": "Id Lab", "description": "d"})
+    target = make_thread(server, human, area["id"], "Archived target")
+    call(server, "POST", f"/api/threads/{target['id']}/close", human, {"reason": "archived"})
+    make_thread(server, human, area["id"], "Unrelated topic")
+    ctx, page = open_page(browser, server, human)
+    try:
+        box = page.get_by_role("combobox", name="Search threads, areas, screens and actions")
+        for query in (str(target["id"]), f"#{target['id']}"):
+            page.keyboard.press("ControlOrMeta+k")
+            box.fill(query)
+            expect(page.get_by_role("option", name=re.compile("^Archived target"))).to_have_attribute("aria-selected", "true")
+            page.keyboard.press("Enter")
+            expect(page).to_have_url(re.compile(rf"#/thread/{target['id']}$"))
+            page.goto(server + "/#/")
+    finally:
+        ctx.close()
+
+
 def test_command_palette_open_filter_enter_and_actions(server, browser):
     human, _ = seed_users(server)
     area = call(server, "POST", "/api/areas", human, {"name": "Palette Lab", "description": "d"})
