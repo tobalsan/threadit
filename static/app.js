@@ -156,21 +156,32 @@
   function fmtSize(n) { return n < 1024 ? n + ' B' : n < 1048576 ? Math.round(n / 102.4) / 10 + ' KB' : Math.round(n / 104857.6) / 10 + ' MB'; }
 
   // ---------- markdown (safe subset: builds DOM nodes, never parses HTML) ----------
-  var INLINE_RE = /`([^`\n]+)`|\[([^\]\n]+)\]\(([^)\s]+)\)|\*\*(.+?)\*\*|\b__(.+?)__\b|\*([^*\s](?:[^*]*[^*\s])?)\*|\b_([^_\s](?:[^_]*[^_\s])?)_\b|(https?:\/\/[^\s<>"]+)/;
+  var INLINE_RE = /`([^`\n]+)`|\[([^\]\n]+)\]\(([^)\s]+)\)|\*\*(.+?)\*\*|\b__(.+?)__\b|\*([^*\s](?:[^*]*[^*\s])?)\*|\b_([^_\s](?:[^_]*[^_\s])?)_\b|(https?:\/\/[^\s<>"]+)|~~(.+?)~~|#([0-9]+)(?![A-Za-z0-9_])/;
   var BLOCK_START = /^(```|#{1,6}\s|\s*>|\s*[-*+]\s+|\s*\d+[.)]\s+)/;
   function safeHref(u) {
     if (/[\u0000-\u0020\u007f\\]/.test(u)) return null;
     if (/^(https?:\/\/|mailto:)/i.test(u) || /^(\/(?!\/)|#|\.\.?\/)/.test(u)) return u;
     return null;
   }
-  function mdInline(text, parent, opts, depth) {
+  function mdInline(text, parent, opts, depth, previous) {
     var rest = text;
+    previous = previous || '';
     while (rest) {
       var m = INLINE_RE.exec(rest);
       if (!m) { parent.appendChild(document.createTextNode(rest)); return; }
       if (m.index) parent.appendChild(document.createTextNode(rest.slice(0, m.index)));
+      var before = m.index ? rest.charAt(m.index - 1) : previous;
+      previous = m[0].slice(-1);
       rest = rest.slice(m.index + m[0].length);
-      if (m[8] !== undefined) {
+      if (m[10] !== undefined) {
+        var thread = opts.links && opts.links[Number(m[10])];
+        if (thread && !opts.noLinks && (!before || /[\s(\[]/.test(before))) {
+          var title = renderInline(thread.title, true);
+          parent.appendChild(el('a', { class: 'thread-ref', href: '#/thread/' + thread.id,
+            'aria-label': 'Thread #' + thread.id + ': ' + title.textContent + (thread.closed_reason ? ' (closed)' : '') },
+            title, thread.closed_reason ? el('span', { class: 'ref-closed', text: ' Closed' }) : null));
+        } else parent.appendChild(document.createTextNode(m[0]));
+      } else if (m[8] !== undefined) {
         // bare URL: leave trailing punctuation (and an unbalanced closing paren) outside the link
         var url = m[8], tail = url.match(/[.,;:!?'*_]+$|\)+$/);
         while (tail && (tail[0][0] !== ')' || (url.match(/\(/g) || []).length < (url.match(/\)/g) || []).length)) {
@@ -186,14 +197,14 @@
         else parent.appendChild(document.createTextNode(opts.noLinks ? m[2] : m[0]));
       } else {
         var strong = m[4] !== undefined || m[5] !== undefined;
-        var inner = strong ? (m[4] !== undefined ? m[4] : m[5]) : (m[6] !== undefined ? m[6] : m[7]);
-        var node = el(strong ? 'strong' : 'em');
-        if (depth < 4) mdInline(inner, node, opts, depth + 1); else node.textContent = inner;
+        var inner = m[9] !== undefined ? m[9] : strong ? (m[4] !== undefined ? m[4] : m[5]) : (m[6] !== undefined ? m[6] : m[7]);
+        var node = el(m[9] !== undefined ? 'del' : strong ? 'strong' : 'em');
+        if (depth < 4) mdInline(inner, node, opts, depth + 1, m[0].charAt(m[0].indexOf(inner) - 1)); else node.textContent = inner;
         parent.appendChild(node);
       }
     }
   }
-  function mdBlocks(lines, parent, depth) {
+  function mdBlocks(lines, parent, depth, opts, prefixes) {
     var i = 0, m;
     while (i < lines.length) {
       var line = lines[i];
@@ -205,19 +216,22 @@
         parent.appendChild(el('pre', null, el('code', { text: code.join('\n') })));
       } else if ((m = /^(#{1,6})\s+(.*)$/.exec(line))) {
         var h = el('h' + Math.min(m[1].length + 2, 6), { class: 'mdh' });
-        mdInline(m[2], h, {}, 0); parent.appendChild(h); i++;
+        mdInline(m[2], h, opts, 0); parent.appendChild(h); i++;
       } else if (/^\s*>/.test(line)) {
-        var quoted = [];
-        while (i < lines.length && /^\s*>/.test(lines[i])) quoted.push(lines[i++].replace(/^\s*> ?/, ''));
+        var quoted = [], quotedPrefixes = [];
+        while (i < lines.length && /^\s*>/.test(lines[i])) {
+          var prefix = /^\s*> ?/.exec(lines[i])[0];
+          quotedPrefixes.push(prefix.slice(-1)); quoted.push(lines[i++].slice(prefix.length));
+        }
         var bq = el('blockquote');
-        if (depth < 4) mdBlocks(quoted, bq, depth + 1); else bq.textContent = quoted.join('\n');
+        if (depth < 4) mdBlocks(quoted, bq, depth + 1, opts, quotedPrefixes); else bq.textContent = quoted.join('\n');
         parent.appendChild(bq);
       } else if (/^\s*[-*+]\s+/.test(line) || /^\s*\d+[.)]\s+/.test(line)) {
         var ordered = /^\s*\d+[.)]\s+/.test(line);
         var itemRe = ordered ? /^\s*\d+[.)]\s+/ : /^\s*[-*+]\s+/;
         var list = el(ordered ? 'ol' : 'ul');
         while (i < lines.length && itemRe.test(lines[i])) {
-          var li = el('li'); mdInline(lines[i].replace(itemRe, ''), li, {}, 0); list.appendChild(li); i++;
+          var li = el('li'); mdInline(lines[i].replace(itemRe, ''), li, opts, 0); list.appendChild(li); i++;
         }
         parent.appendChild(list);
       } else {
@@ -225,15 +239,15 @@
         var first = true;
         while (i < lines.length && lines[i].trim() && (first || !BLOCK_START.test(lines[i]))) {
           if (!first) p.appendChild(el('br'));
-          mdInline(lines[i], p, {}, 0); first = false; i++;
+          mdInline(lines[i], p, opts, 0, prefixes && prefixes[i]); first = false; i++;
         }
         parent.appendChild(p);
       }
     }
   }
-  function renderMarkdown(text) {
+  function renderMarkdown(text, links) {
     var root = el('div', { class: 'md body' });
-    mdBlocks(String(text).replace(/\r\n?/g, '\n').split('\n'), root, 0);
+    mdBlocks(String(text).replace(/\r\n?/g, '\n').split('\n'), root, 0, { links: links });
     return root;
   }
   // Inline markdown only (thread titles). noLinks when the title already sits inside a link.
@@ -379,46 +393,75 @@
     if (!usersPromise) usersPromise = api('GET', '/api/users').then(function (r) { return r.users; }).catch(function () { usersPromise = null; return []; });
     return usersPromise;
   }
-  // Wraps a textarea; typing @prefix shows approved users. Returns the wrapper to put in the DOM.
+  // Wraps every message textarea with shared @user and #thread suggestions.
   function mentionable(ta) {
     var pop = el('div', { class: 'mention-pop hidden', role: 'listbox', 'aria-label': 'Mention suggestions' });
     var wrap = el('div', { class: 'mwrap' }, ta, pop);
-    var items = [], active = 0, range = null;
-    function close() { pop.classList.add('hidden'); clear(pop); items = []; range = null; }
+    var items = [], active = 0, range = null, timer = null, request = 0;
+    function close() { clearTimeout(timer); request++; pop.classList.add('hidden'); clear(pop); items = []; range = null; }
     function paintPop() {
       clear(pop);
       items.forEach(function (u, i) {
+        var content = range.trigger === '#' ? [el('strong', { text: '#' + u.id }), ' ', renderInline(u.title, true), ' ',
+          el('span', { class: 'mut', text: u.area_name }), u.closed_reason ? el('span', { class: 'badge closed', text: 'Closed' }) : null] :
+          [el('strong', { text: '@' + u.username }), ' ', badge(u.account_type), ' ', el('span', { class: 'mut', text: (u.description || '').slice(0, 60) })];
         pop.appendChild(el('div', { class: 'mention-item' + (i === active ? ' active' : ''), role: 'option', 'aria-selected': i === active ? 'true' : 'false',
-          onmousedown: function (ev) { ev.preventDefault(); choose(i); } },
-          el('strong', { text: '@' + u.username }), ' ', badge(u.account_type), ' ',
-          el('span', { class: 'mut', text: (u.description || '').slice(0, 60) })));
+          onmousedown: function (ev) { ev.preventDefault(); choose(i); } }, content));
       });
     }
     function choose(i) {
       var u = items[i];
       if (!u || !range) return;
-      var ins = '@' + u.username + ' ';
+      var ins = range.trigger === '#' ? '#' + u.id + ' ' : '@' + u.username + ' ';
       ta.value = ta.value.slice(0, range.start) + ins + ta.value.slice(range.end);
       var pos = range.start + ins.length;
       close(); ta.focus(); ta.setSelectionRange(pos, pos);
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
     }
-    function update() {
-      var upto = ta.value.slice(0, ta.selectionStart);
-      var m = /(^|[^A-Za-z0-9_-])@([A-Za-z0-9_-]*)$/.exec(upto);
-      if (!m) { close(); return; }
-      var prefix = m[2].toLowerCase();
-      var found = { start: upto.length - m[2].length - 1, end: upto.length };
-      loadUsers().then(function (users) {
-        if (ta.value.slice(0, ta.selectionStart) !== upto) return;
-        items = users.filter(function (u) { return u.username.toLowerCase().indexOf(prefix) === 0; }).slice(0, 8);
-        if (!items.length) { close(); return; }
-        range = found; active = 0; pop.classList.remove('hidden'); paintPop();
+    function normalize(t, area) {
+      return { id: t.id, title: t.title, area_name: t.area_name || (area && area.name), closed_reason: t.closed_reason || (t.closed && t.closed.reason) };
+    }
+    function threads(query) {
+      if (!query) return api('GET', '/api/threads?state=all&sort=activity&limit=8').then(function (r) {
+        return r.pinned.concat(r.threads).sort(function (a, b) { return b.last_activity_at.localeCompare(a.last_activity_at) || b.id - a.id; })
+          .slice(0, 8).map(function (t) { return normalize(t); });
+      });
+      var exact = /^[0-9]+$/.test(query) ? api('GET', '/api/threads/' + query).then(function (r) { return normalize(r.thread, r.area); })
+        .catch(function (e) { if (e.status === 404) return null; throw e; }) : Promise.resolve(null);
+      return Promise.all([api('GET', '/api/search' + qs({ q: query, include_closed: 'true', limit: 8 })), exact]).then(function (rs) {
+        var list = rs[0].threads.map(function (t) { return normalize(t); });
+        if (rs[1]) list = [rs[1]].concat(list.filter(function (t) { return t.id !== rs[1].id; }));
+        return list.slice(0, 8);
       });
     }
+    function update() {
+      close();
+      var upto = ta.value.slice(0, ta.selectionStart);
+      var hash = /(^|[\s(\[])#([^\s]*)$/.exec(upto);
+      var mention = /(^|[^A-Za-z0-9_-])@([A-Za-z0-9_-]*)$/.exec(upto);
+      var m = hash || mention;
+      if (!m) return;
+      var trigger = hash ? '#' : '@', prefix = m[2].toLowerCase(), current = request;
+      var found = { start: upto.length - m[2].length - 1, end: upto.length, trigger: trigger };
+      function fetchItems() {
+        var pending = hash ? threads(m[2]) : loadUsers().then(function (users) {
+          return users.filter(function (u) { return u.username.toLowerCase().indexOf(prefix) === 0; }).slice(0, 8);
+        });
+        pending.then(function (results) {
+          if (current !== request || ta.value.slice(0, ta.selectionStart) !== upto || !document.contains(ta)) return;
+          if (!results.length) return;
+          items = results; range = found; active = 0;
+          pop.setAttribute('aria-label', hash ? 'Thread suggestions' : 'Mention suggestions');
+          pop.classList.remove('hidden'); paintPop();
+        }).catch(function () { if (current === request) close(); });
+      }
+      if (hash) timer = setTimeout(fetchItems, 150); else fetchItems();
+    }
     ta.addEventListener('input', update);
+    ta.addEventListener('click', update);
     ta.addEventListener('blur', close);
     ta.addEventListener('keydown', function (ev) {
-      if (pop.classList.contains('hidden') || !items.length) return;
+      if (pop.classList.contains('hidden') || !items.length) { if (ev.key === 'Escape') close(); return; }
       if (ev.key === 'ArrowDown') { ev.preventDefault(); active = (active + 1) % items.length; paintPop(); }
       else if (ev.key === 'ArrowUp') { ev.preventDefault(); active = (active + items.length - 1) % items.length; paintPop(); }
       else if ((ev.key === 'Enter' && !ev.metaKey && !ev.ctrlKey) || ev.key === 'Tab') { ev.preventDefault(); choose(active); }
@@ -984,6 +1027,7 @@
     refreshAttentionCount();
     var fn;
     if (!parts.length) fn = function () { return viewHome(params); };
+    else if (parts[0] === 'completed') fn = function () { return viewCompleted(params); };
     else if (parts[0] === 'areas') fn = viewAreas;
     else if (parts[0] === 'area' && parts[1]) fn = function () { return viewArea(parts[1], params); };
     else if (parts[0] === 'thread' && parts[1]) fn = function () { return viewThread(parts[1], params.get('m')); };
@@ -1036,6 +1080,8 @@
     return f;
   }
   function viewHome(params) {
+    var recentPath = '/api/threads' + qs({ state: 'completed', sort: 'closed', closed_since: new Date(Date.now() - 7 * 86400000).toISOString(), limit: 5 });
+    var recent = api('GET', recentPath).catch(function (e) { return { error: e }; });
     var HOME_PAGE = 20;
     var page = Math.max(1, parseInt(params.get('page'), 10) || 1);
     return api('GET', '/api/threads' + qs({ sort: 'hot', state: 'active', limit: HOME_PAGE, offset: (page - 1) * HOME_PAGE })).then(function (r) {
@@ -1050,6 +1096,33 @@
         page > 1 ? el('a', { class: 'btn', href: '#/' + (page > 2 ? '?page=' + (page - 1) : ''), text: 'Previous' }) : null,
         r.has_more ? el('a', { class: 'btn', href: '#/?page=' + (page + 1), text: 'Next' }) : null);
       if (nav.firstChild) root.appendChild(nav);
+      var completed = el('div'); root.appendChild(completed);
+      function showCompleted(result) {
+        clear(completed);
+        if (result.error) { completed.appendChild(errBox(result.error, function () { api('GET', recentPath).then(showCompleted).catch(function (e) { showCompleted({ error: e }); }); })); return; }
+        if (!result.threads.length) return;
+        var section = el('section', { 'aria-labelledby': 'recently-completed', class: 'list' },
+          el('h2', { id: 'recently-completed', text: 'Recently completed' }));
+        result.threads.forEach(function (t) { section.appendChild(threadRow(t)); });
+        section.appendChild(el('a', { href: '#/completed', text: 'All completed threads' }));
+        completed.appendChild(section);
+      }
+      recent.then(showCompleted);
+      return root;
+    });
+  }
+  function viewCompleted(params) {
+    var page = Math.max(1, parseInt(params.get('page'), 10) || 1);
+    return api('GET', '/api/threads' + qs({ state: 'completed', sort: 'closed', limit: PAGE, offset: (page - 1) * PAGE })).then(function (r) {
+      var root = el('div', { class: 'screen' }, el('h1', { text: 'Completed threads' }));
+      root.pageTitle = 'Completed threads';
+      if (!r.threads.length) root.appendChild(el('div', { class: 'empty', text: 'No completed threads.' }));
+      var rows = el('div', { class: 'list' });
+      r.threads.forEach(function (t) { rows.appendChild(threadRow(t)); });
+      root.appendChild(rows);
+      root.appendChild(el('div', { class: 'pager' },
+        page > 1 ? el('a', { class: 'btn', href: '#/completed?page=' + (page - 1), text: 'Previous' }) : null,
+        r.has_more ? el('a', { class: 'btn', href: '#/completed?page=' + (page + 1), text: 'Next' }) : null));
       return root;
     });
   }
@@ -1103,7 +1176,7 @@
         el('h3', null, link, ' ', modified(t)),
         el('div', { class: 'meta' },
           t.pinned ? el('span', { class: 'pin', text: 'Pinned' }) : null,
-          t.closed ? el('span', { text: 'Closed · ' + t.closed.reason }) : null,
+          t.closed ? el('span', { text: 'Closed · ' + t.closed.reason + ' by ' + t.closed.by + ' on ' + new Date(t.closed.at).toLocaleDateString(), title: fmt(t.closed.at) }) : null,
           t.pending_attention ? el('span', { class: 'need', text: 'Needs you · ' + t.pending_attention }) : null,
           el('a', { href: '#/area/' + areaRef(t), text: t.area_name }),
           who(t.owner),
@@ -1115,7 +1188,7 @@
   function viewArea(id, params) {
     var state = params.get('state') || 'active';
     var sort = params.get('sort') || 'importance';
-    var dated = sort === 'created' || sort === 'activity';
+    var dated = sort === 'created' || sort === 'activity' || sort === 'closed';
     var order = dated && params.get('order') === 'asc' ? 'asc' : 'desc';
     return api('GET', '/api/areas/' + encodeURIComponent(id)).then(function (area) {
       return api('GET', '/api/threads' + qs({ area_id: area.id, state: state, sort: sort, order: order, limit: PAGE })).then(function (list) { return [area, list]; });
@@ -1140,13 +1213,13 @@
       root.appendChild(slot);
       function go(s, o, d) { location.hash = '#/area/' + id + qs({ state: s, sort: o, order: d === 'asc' ? 'asc' : '' }); }
       var sortSel = el('select', { onchange: function () { go(state, sortSel.value, order); } },
-        [['importance', 'Importance'], ['activity', 'Recent activity'], ['created', 'Created']].map(function (o) {
+        [['importance', 'Importance'], ['activity', 'Recent activity'], ['created', 'Created'], ['closed', 'Closed']].map(function (o) {
           return el('option', { value: o[0], text: o[1], selected: o[0] === sort }); }));
       var orderSel = el('select', { id: 'ordersel', 'aria-label': 'Order', onchange: function () { go(state, sort, orderSel.value); } },
         [['desc', 'Newest first'], ['asc', 'Oldest first']].map(function (o) {
           return el('option', { value: o[0], text: o[1], selected: o[0] === order }); }));
       var stateSel = el('select', { onchange: function () { go(stateSel.value, sort, order); } },
-        [['active', 'Active'], ['closed', 'Closed only'], ['all', 'Active + closed']].map(function (o) {
+        [['active', 'Active'], ['closed', 'Closed only'], ['completed', 'Completed'], ['archived', 'Archived'], ['all', 'Active + closed']].map(function (o) {
           return el('option', { value: o[0], text: o[1], selected: o[0] === state }); }));
       root.appendChild(el('div', { class: 'ctl' }, el('label', { for: 'sortsel', text: 'Sort' }), sortSel, dated ? orderSel : null, el('label', { for: 'statesel', text: 'Show' }), stateSel));
       sortSel.id = 'sortsel'; stateSel.id = 'statesel';
@@ -1316,11 +1389,50 @@
           if (nm.parent_id && !host) return;
           var node = renderMsgNode({ m: nm, kids: [] }, ctx, depth, true);
           if (host) host.appendChild(node); else ctx.insertReply(node);
+          if (ctx.collapse) ctx.collapse.added(nm);
         });
         sc.scrollTop = top;
         if (!live()) stopSessionPoll();
       }).catch(function () {}).then(function () { busy = false; });
     }, 3000);
+  }
+  function replyCollapse(threadId, messages, targetId) {
+    var key = 'threadit:collapsed:' + threadId, hidden = new Set(), parents = {}, counts = {}, controls = {};
+    messages.forEach(function (m) { parents[m.id] = m.parent_id; counts[m.id] = 0; });
+    function ancestors(id, fn) { while (id && Object.prototype.hasOwnProperty.call(parents, id)) { fn(id); id = parents[id]; } }
+    messages.forEach(function (m) { ancestors(m.parent_id, function (id) { counts[id]++; }); });
+    try {
+      var stored = JSON.parse(localStorage.getItem(key) || '[]');
+      if (Array.isArray(stored)) stored.forEach(function (id) { if (counts[id]) hidden.add(Number(id)); });
+    } catch (e) { /* storage unavailable or invalid: all branches open */ }
+    function save() { try { localStorage.setItem(key, JSON.stringify(Array.from(hidden))); } catch (e) { /* session only */ } }
+    function open(id) { ancestors(id, function (parent) { hidden.delete(parent); if (controls[parent]) controls[parent](); }); save(); }
+    if (targetId) open(parents[targetId]);
+    return {
+      control: function (m, kids) {
+        if (m.is_op) return null;
+        var slot = el('span');
+        kids.id = 'replies-' + m.id;
+        var btn = el('button', { type: 'button', class: 'link', 'aria-controls': kids.id, onclick: function () {
+          if (hidden.has(m.id)) hidden.delete(m.id); else hidden.add(m.id);
+          save(); paint();
+        } });
+        slot.appendChild(btn);
+        function paint() {
+          var count = counts[m.id] || 0, closed = hidden.has(m.id);
+          slot.hidden = !count; kids.hidden = closed;
+          btn.textContent = (closed ? 'Show ' : 'Hide ') + count + (count === 1 ? ' reply' : ' replies');
+          btn.setAttribute('aria-expanded', String(!closed));
+        }
+        controls[m.id] = paint; paint();
+        return slot;
+      },
+      open: open,
+      added: function (m) {
+        parents[m.id] = m.parent_id; counts[m.id] = 0;
+        ancestors(m.parent_id, function (id) { counts[id]++; if (controls[id]) controls[id](); });
+      }
+    };
   }
   function renderMsgNode(node, ctx, depth, links) {
     var m = node.m;
@@ -1329,6 +1441,7 @@
     var kids = el('div', { class: 'children' });
     (ctx.kidsOf = ctx.kidsOf || {})[m.id] = kids;
     (ctx.depths = ctx.depths || {})[m.id] = depth;
+    var collapseSlot = ctx.collapse ? ctx.collapse.control(m, kids) : null;
     var replySlot = el('div');
     var agentsSlot = agentsBlock(m, ctx);
     var editing = false;
@@ -1346,7 +1459,7 @@
         el('button', { type: 'button', class: 'small', text: 'Cancel', onclick: cancel }));
       escCancels(f, cancel);
       formSubmit(f, err, function () {
-        return api('PATCH', '/api/messages/' + m.id, { body: ta.value }).then(function (nm) { m.body = nm.body; m.edited_at = nm.edited_at; editing = false; draft = null; clearStored(); paint(); });
+        return api('PATCH', '/api/messages/' + m.id, { body: ta.value }).then(function (nm) { m.body = nm.body; m.edited_at = nm.edited_at; m.linked_threads = nm.linked_threads; editing = false; draft = null; clearStored(); paint(); });
       });
       return f;
     }
@@ -1380,11 +1493,11 @@
         attn && !pending && !gone ? el('span', { class: 'mut', title: 'reason: ' + attn.reason, text: 'attention: ' + attn.status }) : null,
         links ? el('a', { class: 'ctxlink', href: ctxHref(m), text: 'context' }) : null,
         gone ? null : el('div', { class: 'vwrap' }, el('span', { class: 'vscore', 'aria-hidden': 'true', title: 'Score', text: String(m.score) }), stepper)));
-      if (gone) { body.appendChild(el('p', { class: 'deleted', text: 'message deleted' })); return; }
-      body.appendChild(editing ? editForm() : renderMarkdown(m.body));
+      if (gone) { body.appendChild(el('p', { class: 'deleted', text: 'message deleted' })); if (collapseSlot) body.appendChild(el('div', { class: 'foot' }, collapseSlot)); return; }
+      body.appendChild(editing ? editForm() : renderMarkdown(m.body, m.linked_threads));
       add(body, attachmentsNode(m));
       if (m.agent_sessions && m.agent_sessions.length) body.appendChild(agentsSlot);
-      var foot = el('div', { class: 'foot' });
+      var foot = el('div', { class: 'foot' }, collapseSlot);
       var chips = el('div', { class: 'chips' });
       m.reactions.forEach(function (r) {
         chips.appendChild(el('button', { type: 'button', class: 'rx chip' + (r.mine ? ' mine' : ''), 'aria-pressed': r.mine ? 'true' : 'false', disabled: closed,
@@ -1419,7 +1532,7 @@
           function closeReply() { clear(replySlot); btn.setAttribute('aria-expanded', 'false'); if (document.contains(btn)) btn.focus(); }
           var rf = composer({ draftKey: 'reply:' + m.thread_id + ':' + m.id, label: 'Reply to ' + m.author.username, sendLabel: 'Send reply',
             placeholder: 'Reply to ' + m.author.username + '… type @ to mention', onCancel: closeReply,
-            onSend: function (text, ids) { return api('POST', '/api/threads/' + m.thread_id + '/messages', { body: text, attachment_ids: ids, parent_id: m.is_op ? null : m.id }).then(function (nm) { clear(replySlot); ctx.added(nm); }); } });
+            onSend: function (text, ids) { return api('POST', '/api/threads/' + m.thread_id + '/messages', { body: text, attachment_ids: ids, parent_id: m.is_op ? null : m.id }).then(function (nm) { clear(replySlot); if (ctx.collapse) ctx.collapse.open(m.id); ctx.added(nm); }); } });
           var ex = el('div', { class: 'expand' }, el('div', null, rf));
           ex.form = rf;
           replySlot.appendChild(ex); btn.setAttribute('aria-expanded', 'true');
@@ -1538,6 +1651,7 @@
       root.escHref = prevHash !== null && /^(#\/?)?(\?.*)?$/.test(prevHash) ? prevHash || '#/' : '#/area/' + areaRef(t);
       root.pageTitle = t.title;
       var ctx = { threadId: t.id, closed: !!t.closed, targetId: targetParam ? Number(targetParam) : null, added: function () { refresh(); }, onOpScore: function () { paintInspector(); } };
+      ctx.collapse = replyCollapse(t.id, d.messages, ctx.targetId);
       var titleSlot = el('div');
       var isOwner = me.id === t.owner.id;
       function paintTitle() {
