@@ -164,3 +164,15 @@ def test_backlink_code_span_does_not_join_text_to_reference(admin, area):
     admin.make_thread(area["id"], body=f"x `code`#{target}")
     admin.make_thread(area["id"], body=f"x ```\ncode\n```#{target}")
     assert _backlinks(admin, target) == []
+
+
+def test_backlink_counts_leading_zeros(admin, area):
+    target = admin.make_thread(area["id"])["thread"]["id"]
+    src = admin.make_thread(area["id"], body=f"see #000{target}")["thread"]["id"]
+    assert [e["thread_id"] for e in _backlinks(admin, target)] == [src]
+
+
+def test_backlink_ignores_fence_with_inner_backticks(admin, area):
+    target = admin.make_thread(area["id"])["thread"]["id"]
+    admin.make_thread(area["id"], body=f"```\na ```b\nsee #{target}\n```")
+    assert _backlinks(admin, target) == []

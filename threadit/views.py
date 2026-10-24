@@ -257,7 +257,22 @@ def fetch_messages(
     link_threads(conn, out)
     return out
 
-_CODE = re.compile(r"```.*?(?:```|\Z)|`[^`\n]*`", re.DOTALL)
+_INLINE_CODE = re.compile(r"`[^`\n]+`")
+
+
+def _strip_code(body: str) -> str:
+    """Blank out code the way the client markdown does: line-based fences, then inline spans."""
+    out, in_fence = [], False
+    for line in body.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        if in_fence:
+            in_fence = not re.match(r"```\s*$", line)
+            out.append("\x00")
+        elif line.startswith("```"):
+            in_fence = True
+            out.append("\x00")
+        else:
+            out.append(_INLINE_CODE.sub("\x00", line))
+    return "\n".join(out)
 
 
 def referenced_by(conn: sqlite3.Connection, thread_id: int) -> list[dict]:
@@ -269,13 +284,13 @@ def referenced_by(conn: sqlite3.Connection, thread_id: int) -> list[dict]:
         " JOIN areas a ON a.id = t.area_id JOIN users u ON u.id = m.author_id"
         " WHERE m.thread_id != ? AND m.deleted_at IS NULL AND m.body LIKE ?"
         " ORDER BY m.created_at DESC, m.id DESC",
-        (thread_id, f"%#{thread_id}%"),
+        (thread_id, f"%#%{thread_id}%"),
     )
     found: dict[int, dict] = {}
     for r in rows:
         if r["thread_id"] in found:
             continue
-        refs = _THREAD_REFERENCE.findall(_CODE.sub("\x00", r["body"]))
+        refs = _THREAD_REFERENCE.findall(_strip_code(r["body"]))
         if any((ref.lstrip("0") or "0") == str(thread_id) for ref in refs):
             found[r["thread_id"]] = {
                 "thread_id": r["thread_id"],
