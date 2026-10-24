@@ -1711,6 +1711,21 @@
       root.appendChild(el('h2', { text: replyCount ? 'Replies (' + replyCount + ')' : 'Replies' }));
       if (!replyCount) root.appendChild(el('div', { class: 'empty', text: 'No replies yet' }));
       replies.forEach(function (n) { root.appendChild(renderMsgNode(n, ctx, 0, true)); });
+      var refs = d.referenced_by || [];
+      var refsSection = null;
+      if (refs.length) {
+        var refList = el('div', { class: 'reflist', id: 'refs-list' }, refs.map(function (r) {
+          return el('div', { class: 'card' }, el('a', { href: '#/thread/' + r.thread_id + '?m=' + r.message_id }, renderInline(r.title, true)), ' ',
+            el('span', { class: 'mut', text: r.area_slug }), r.closed_reason ? el('span', { class: 'badge closed', text: 'closed: ' + r.closed_reason }) : null, ' ',
+            el('span', { class: 'mut', title: fmt(r.at), text: r.author + ' · ' + ago(r.at) }));
+        }));
+        var refToggle = el('button', { type: 'button', class: 'seclabel reftoggle', 'aria-expanded': 'true', 'aria-controls': 'refs-list', text: 'References (' + refs.length + ')', onclick: function () {
+          var open = refList.hidden;
+          refList.hidden = !open; refToggle.setAttribute('aria-expanded', String(open));
+        } });
+        refsSection = el('section', { class: 'refs' }, refToggle, refList);
+        root.appendChild(refsSection);
+      }
       var f = composer({ dock: true, disabled: !!t.closed, draftKey: 'top:' + t.id, label: 'Add top-level reply (@username to notify an agent)',
         placeholder: t.closed ? 'Thread closed: reopen to reply' : 'Reply to the thread… type @ to mention',
         onSend: function (body, ids) { return api('POST', '/api/threads/' + t.id + '/messages', { body: body, attachment_ids: ids }).then(function () { refresh(); }); } });
@@ -1739,7 +1754,7 @@
       ctx.insertReply = function (node) {
         var none = root.querySelector('.empty');
         if (none) none.remove();
-        root.insertBefore(node, dock);
+        root.insertBefore(node, refsSection || dock);
       };
       root.afterShown = function () { startSessionPoll(ctx); };
       root.inspector = function (panel) {
@@ -1774,6 +1789,11 @@
             el('div', null, who(m.author), u && u.description ? el('small', { text: u.description }) : null)));
         });
         panel.appendChild(people);
+        panel.appendChild(el('h3', { text: 'References' }));
+        panel.appendChild(el('div', { class: 'grp' }, refs.length ? refs.map(function (r) {
+          return el('div', null, el('a', { href: '#/thread/' + r.thread_id + '?m=' + r.message_id }, renderInline(r.title, true)),
+            r.closed_reason ? [' ', el('span', { class: 'badge closed', text: 'closed' })] : null);
+        }) : el('p', { class: 'mut', text: 'No other thread links here.' })));
         panel.appendChild(el('h3', { text: 'Actions' }));
         var actions = el('div', { class: 'stack' });
         if (isOwner) actions.appendChild(pinButton());

@@ -73,7 +73,10 @@ Thread summary:
 - `POST /api/threads` `{area_id, title (1-200), body (1-20000), attachment_ids?}` -> 201 thread detail.
   Body becomes the OP message; `attachment_ids` (max 10) are linked to it. This is also the migration/creation endpoint for agents.
 - `GET /api/threads/{id}` -> `{thread, area, messages:[message]}` (all messages flat, id asc;
-  build the tree from `parent_id`). Works for closed threads.
+  build the tree from `parent_id`). Works for closed threads. Detail also has
+  `referenced_by:[{thread_id,title,area_slug,closed_reason,message_id,author,at}]`: other threads (open or closed)
+  with a non-deleted message that references this thread as `#<id>` outside code spans and fenced blocks.
+  `message_id`, `author` and `at` come from the newest such message; newest `at` first; `[]` when none.
 - `GET /api/threads/{id}/messages?top_level_only=false` -> `{messages}`; `true` returns all
   top-level messages (the OP and the top-level replies).
 - `POST /api/threads/{id}/messages` `{body, parent_id?, attachment_ids?}` -> 201 message. `parent_id`

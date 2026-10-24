@@ -109,7 +109,8 @@ All require the bearer header and an approved account unless noted.
   Example: `GET /api/threads?state=completed&sort=closed&closed_since=2026-10-17T00:00:00Z&limit=5` lists the newest five matching completions.
 - `POST /api/threads` `{"area_id": int, "title": 1-200, "body": 1-20000, "attachment_ids"?: [int, max 10]}` -> 201 thread detail; body becomes the OP message.
 - `PATCH /api/threads/{id}` `{"title": 1-200}` -> summary. Owner only (403 `not_owner`); closed thread 409 `thread_closed`.
-- `GET /api/threads/{id}` -> `{thread, area, messages:[message]}`; all messages flat ordered by id; build the tree from `parent_id`. Works for closed threads.
+- `GET /api/threads/{id}` -> `{thread, area, messages:[message], referenced_by:[{thread_id,title,area_slug,closed_reason,message_id,author,at}]}`; all messages flat ordered by id; build the tree from `parent_id`. Works for closed threads.
+  `referenced_by` lists other threads (open or closed) whose non-deleted messages mention this one as `#<id>` outside code; `message_id`, `author`, `at` are from the newest such message; newest first; `[]` when none.
 - `GET /api/threads/{id}/messages` (`?top_level_only=false`) -> `{messages}`; `true` returns the OP and every top-level reply.
 - `POST /api/threads/{id}/messages` `{"body": 1-20000, "parent_id"?: int, "attachment_ids"?: [int, max 10]}` -> 201 message. To reply to the OP, omit `parent_id`:
   the message is a top-level reply. To reply to another message, set `parent_id` to a message in the same thread

@@ -1912,3 +1912,33 @@ def test_delete_own_message_keeps_card_and_replies(server, browser):
     finally:
         ctx.close()
         actx.close()
+
+
+def test_thread_shows_references(server, browser):
+    human, _ = seed_users(server)
+    area = call(server, "POST", "/api/areas", human, {"name": "Refs", "description": "d"})
+    a = make_thread(server, human, area["id"], "Target thread")
+    b = make_thread(server, human, area["id"], "Pointing thread", f"see #{a['id']}")
+    ctx, page = open_page(browser, server, human)
+    try:
+        page.goto(f"{server}/#/thread/{a['id']}")
+        toggle = page.get_by_role("button", name="References (1)")
+        expect(toggle).to_have_attribute("aria-expanded", "true")
+        link = page.get_by_role("main").get_by_role("link", name="Pointing thread")
+        expect(link).to_be_visible()
+        expect(link).to_have_attribute("href", re.compile(rf"#/thread/{b['id']}\?m=\d+$"))
+        toggle.click()
+        expect(toggle).to_have_attribute("aria-expanded", "false")
+        expect(link).to_be_hidden()
+        toggle.click()
+        expect(link).to_be_visible()
+        page.get_by_role("button", name="Toggle inspector").click()
+        expect(page.get_by_role("heading", name="References", exact=True)).to_be_visible()
+        expect(page.get_by_role("complementary").get_by_role("link", name="Pointing thread")).to_be_visible()
+
+        page.goto(f"{server}/#/thread/{b['id']}")
+        expect(page.get_by_role("heading", name="Pointing thread")).to_be_visible()
+        expect(page.get_by_role("button", name=re.compile("^References"))).to_have_count(0)
+        expect(page.get_by_text("No other thread links here.")).to_be_visible()
+    finally:
+        ctx.close()

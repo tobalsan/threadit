@@ -108,6 +108,9 @@ kbd{font:600 11px var(--font);padding:1px 6px;border-radius:5px;background:var(-
 .pageh,h1{font-size:28px;font-weight:800;letter-spacing:-.025em;margin:6px 6px 0;line-height:1.2}
 .sub{margin:0 6px;color:var(--text2);font-size:13.5px}
 h2{font-size:17px;margin:12px 6px 0;letter-spacing:-.01em}
+.reftoggle{background:none;border:0;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:6px}
+.reftoggle::before{content:'▾';font-size:11px}.reftoggle[aria-expanded=false]::before{content:'▸'}
+.refs{margin-top:8px}.reflist{display:grid;gap:8px;margin-top:6px}
 .seclabel{font-size:12px;font-weight:750;letter-spacing:.07em;text-transform:uppercase;color:var(--text2);margin:12px 6px 0}
 .pagehead{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
 .pagehead h1{flex:1;min-width:0}

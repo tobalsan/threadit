@@ -42,6 +42,7 @@ from threadit.views import (
     get_message_json,
     get_thread_json,
     list_areas,
+    referenced_by,
 )
 
 router = APIRouter()
@@ -119,6 +120,7 @@ def _thread_detail(conn: sqlite3.Connection, viewer_id: int, thread_id: int) -> 
         "thread": thread,
         "area": area_json(get_area(conn, thread["area_id"])),
         "messages": fetch_messages(conn, viewer_id, "m.thread_id = ?", (thread_id,)),
+        "referenced_by": referenced_by(conn, thread_id),
     }
 
 

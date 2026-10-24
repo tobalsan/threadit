@@ -257,6 +257,37 @@ def fetch_messages(
     link_threads(conn, out)
     return out
 
+_CODE = re.compile(r"```.*?(?:```|\Z)|`[^`\n]*`", re.DOTALL)
+
+
+def referenced_by(conn: sqlite3.Connection, thread_id: int) -> list[dict]:
+    """Other threads with a live message that references this thread, newest first."""
+    rows = conn.execute(
+        "SELECT m.id, m.thread_id, m.body, m.created_at, u.username,"
+        " t.title, t.closed_reason, a.slug AS area_slug"
+        " FROM messages m JOIN threads t ON t.id = m.thread_id"
+        " JOIN areas a ON a.id = t.area_id JOIN users u ON u.id = m.author_id"
+        " WHERE m.thread_id != ? AND m.deleted_at IS NULL AND m.body LIKE ?"
+        " ORDER BY m.created_at DESC, m.id DESC",
+        (thread_id, f"%#{thread_id}%"),
+    )
+    found: dict[int, dict] = {}
+    for r in rows:
+        if r["thread_id"] in found:
+            continue
+        refs = _THREAD_REFERENCE.findall(_CODE.sub("", r["body"]))
+        if any((ref.lstrip("0") or "0") == str(thread_id) for ref in refs):
+            found[r["thread_id"]] = {
+                "thread_id": r["thread_id"],
+                "title": r["title"],
+                "area_slug": r["area_slug"],
+                "closed_reason": r["closed_reason"],
+                "message_id": r["id"],
+                "author": r["username"],
+                "at": r["created_at"],
+            }
+    return sorted(found.values(), key=lambda e: e["at"], reverse=True)
+
 
 def link_threads(conn: sqlite3.Connection, messages: list[dict]) -> None:
     """Resolve all references in a message response together, at read time."""

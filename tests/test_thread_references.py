@@ -105,3 +105,54 @@ def test_references_stay_current_on_every_message_response(admin, alice, area):
     assert alice.attention() == {}
     deleted = admin.ok("DELETE", f"/api/messages/{mid}")
     assert deleted["linked_threads"] == {}
+
+
+def _backlinks(admin, tid):
+    return admin.ok("GET", f"/api/threads/{tid}")["referenced_by"]
+
+
+def test_backlink_lists_other_thread_with_newest_message(admin, area):
+    target = admin.make_thread(area["id"], title="Runner")["thread"]["id"]
+    src = admin.make_thread(area["id"], title="Notes", body=f"See #{target}")
+    newest = admin.say(src["thread"]["id"], f"again #{target}")
+    admin.say(src["thread"]["id"], "no reference")
+    (entry,) = _backlinks(admin, target)
+    assert entry["thread_id"] == src["thread"]["id"]
+    assert entry["title"] == "Notes"
+    assert entry["area_slug"] == "ops"
+    assert entry["closed_reason"] is None
+    assert entry["message_id"] == newest["id"]
+    assert entry["author"] == "root"
+    assert entry["at"] == newest["created_at"]
+    assert _backlinks(admin, src["thread"]["id"]) == []
+
+
+def test_backlink_includes_closed_thread(admin, area):
+    target = admin.make_thread(area["id"])["thread"]["id"]
+    src = admin.make_thread(area["id"], body=f"#{target}")["thread"]["id"]
+    admin.ok("POST", f"/api/threads/{src}/close", {"reason": "archived"})
+    assert [e["closed_reason"] for e in _backlinks(admin, target)] == ["archived"]
+
+
+def test_backlink_ignores_self_deleted_and_longer_ids(admin, area):
+    target = admin.make_thread(area["id"])["thread"]["id"]
+    admin.say(target, f"self #{target}")
+    gone = admin.make_thread(area["id"], body=f"#{target}")
+    admin.ok("DELETE", f"/api/messages/{gone['messages'][0]['id']}")
+    admin.make_thread(area["id"], body=f"#{target}0 and #{target}x")
+    assert _backlinks(admin, target) == []
+
+
+def test_backlink_ignores_code(admin, area):
+    target = admin.make_thread(area["id"])["thread"]["id"]
+    admin.make_thread(area["id"], body=f"inline `see #{target}` here")
+    admin.make_thread(area["id"], body=f"```\nsee #{target}\n```")
+    assert _backlinks(admin, target) == []
+
+
+def test_backlinks_newest_first(admin, area):
+    target = admin.make_thread(area["id"])["thread"]["id"]
+    first = admin.make_thread(area["id"], body=f"#{target}")["thread"]["id"]
+    second = admin.make_thread(area["id"], body=f"#{target}")["thread"]["id"]
+    admin.say(first, f"bump #{target}")
+    assert [e["thread_id"] for e in _backlinks(admin, target)] == [first, second]
