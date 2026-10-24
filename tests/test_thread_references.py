@@ -120,6 +120,7 @@ def test_backlink_lists_other_thread_with_newest_message(admin, area):
     assert entry["thread_id"] == src["thread"]["id"]
     assert entry["title"] == "Notes"
     assert entry["area_slug"] == "ops"
+    assert entry["area_name"] == "Ops"
     assert entry["closed_reason"] is None
     assert entry["message_id"] == newest["id"]
     assert entry["author"] == "root"
@@ -156,3 +157,10 @@ def test_backlinks_newest_first(admin, area):
     second = admin.make_thread(area["id"], body=f"#{target}")["thread"]["id"]
     admin.say(first, f"bump #{target}")
     assert [e["thread_id"] for e in _backlinks(admin, target)] == [first, second]
+
+
+def test_backlink_code_span_does_not_join_text_to_reference(admin, area):
+    target = admin.make_thread(area["id"])["thread"]["id"]
+    admin.make_thread(area["id"], body=f"x `code`#{target}")
+    admin.make_thread(area["id"], body=f"x ```\ncode\n```#{target}")
+    assert _backlinks(admin, target) == []

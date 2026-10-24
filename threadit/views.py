@@ -264,7 +264,7 @@ def referenced_by(conn: sqlite3.Connection, thread_id: int) -> list[dict]:
     """Other threads with a live message that references this thread, newest first."""
     rows = conn.execute(
         "SELECT m.id, m.thread_id, m.body, m.created_at, u.username,"
-        " t.title, t.closed_reason, a.slug AS area_slug"
+        " t.title, t.closed_reason, a.slug AS area_slug, a.name AS area_name"
         " FROM messages m JOIN threads t ON t.id = m.thread_id"
         " JOIN areas a ON a.id = t.area_id JOIN users u ON u.id = m.author_id"
         " WHERE m.thread_id != ? AND m.deleted_at IS NULL AND m.body LIKE ?"
@@ -275,12 +275,13 @@ def referenced_by(conn: sqlite3.Connection, thread_id: int) -> list[dict]:
     for r in rows:
         if r["thread_id"] in found:
             continue
-        refs = _THREAD_REFERENCE.findall(_CODE.sub("", r["body"]))
+        refs = _THREAD_REFERENCE.findall(_CODE.sub("\x00", r["body"]))
         if any((ref.lstrip("0") or "0") == str(thread_id) for ref in refs):
             found[r["thread_id"]] = {
                 "thread_id": r["thread_id"],
                 "title": r["title"],
                 "area_slug": r["area_slug"],
+                "area_name": r["area_name"],
                 "closed_reason": r["closed_reason"],
                 "message_id": r["id"],
                 "author": r["username"],

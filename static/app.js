@@ -1714,16 +1714,16 @@
       var refs = d.referenced_by || [];
       var refsSection = null;
       if (refs.length) {
-        var refList = el('div', { class: 'reflist', id: 'refs-list' }, refs.map(function (r) {
-          return el('div', { class: 'card' }, el('a', { href: '#/thread/' + r.thread_id + '?m=' + r.message_id }, renderInline(r.title, true)), ' ',
-            el('span', { class: 'mut', text: r.area_slug }), r.closed_reason ? el('span', { class: 'badge closed', text: 'closed: ' + r.closed_reason }) : null, ' ',
-            el('span', { class: 'mut', title: fmt(r.at), text: r.author + ' · ' + ago(r.at) }));
+        var refList = el('ul', { class: 'reflist card', id: 'refs-list' }, refs.map(function (r) {
+          return el('li', null, el('a', { class: 'rt', href: '#/thread/' + r.thread_id + '?m=' + r.message_id }, renderInline(r.title, true)),
+            r.closed_reason ? el('span', { class: 'badge closed', text: 'closed: ' + r.closed_reason }) : null,
+            el('span', { class: 'rm' }, el('span', { text: r.area_name || r.area_slug }), el('span', { text: r.author }), el('span', { title: fmt(r.at), text: ago(r.at) })));
         }));
-        var refToggle = el('button', { type: 'button', class: 'seclabel reftoggle', 'aria-expanded': 'true', 'aria-controls': 'refs-list', text: 'References (' + refs.length + ')', onclick: function () {
+        var refToggle = el('button', { type: 'button', class: 'reftoggle', 'aria-expanded': 'true', 'aria-controls': 'refs-list', text: 'References (' + refs.length + ')', onclick: function () {
           var open = refList.hidden;
           refList.hidden = !open; refToggle.setAttribute('aria-expanded', String(open));
         } });
-        refsSection = el('section', { class: 'refs' }, refToggle, refList);
+        refsSection = el('section', { class: 'refs' }, el('h2', null, refToggle), refList);
         root.appendChild(refsSection);
       }
       var f = composer({ dock: true, disabled: !!t.closed, draftKey: 'top:' + t.id, label: 'Add top-level reply (@username to notify an agent)',
@@ -1790,9 +1790,9 @@
         });
         panel.appendChild(people);
         panel.appendChild(el('h3', { text: 'References' }));
-        panel.appendChild(el('div', { class: 'grp' }, refs.length ? refs.map(function (r) {
+        panel.appendChild(el('div', { class: 'grp reflinks' }, refs.length ? refs.map(function (r) {
           return el('div', null, el('a', { href: '#/thread/' + r.thread_id + '?m=' + r.message_id }, renderInline(r.title, true)),
-            r.closed_reason ? [' ', el('span', { class: 'badge closed', text: 'closed' })] : null);
+            r.closed_reason ? el('span', { class: 'badge closed', text: 'closed' }) : null);
         }) : el('p', { class: 'mut', text: 'No other thread links here.' })));
         panel.appendChild(el('h3', { text: 'Actions' }));
         var actions = el('div', { class: 'stack' });
