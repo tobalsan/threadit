@@ -1,4 +1,5 @@
 import sqlite3
+from datetime import datetime, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Query, Request
@@ -125,11 +126,12 @@ def _thread_detail(conn: sqlite3.Connection, viewer_id: int, thread_id: int) -> 
 def list_threads(
     request: Request,
     area_id: int | None = None,
-    state: Literal["active", "closed", "all"] = "active",
-    sort: Literal["created", "activity", "importance", "hot"] = "importance",
+    state: Literal["active", "closed", "all", "completed", "archived"] = "active",
+    sort: Literal["created", "activity", "importance", "hot", "closed"] = "importance",
     order: Literal["asc", "desc"] = "desc",
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
+    closed_since: str | None = None,
 ):
     with session(request) as (conn, user):
         clauses, params = [], []
@@ -140,8 +142,23 @@ def list_threads(
             clauses.append("t.closed_reason IS NULL")
         elif state == "closed":
             clauses.append("t.closed_reason IS NOT NULL")
+        elif state in ("completed", "archived"):
+            clauses.append("t.closed_reason = ?")
+            params.append(state)
+        if closed_since is not None:
+            try:
+                cutoff = datetime.fromisoformat(closed_since)
+                if cutoff.tzinfo is None:
+                    raise ValueError
+                normalized = cutoff.astimezone(timezone.utc).isoformat(timespec="microseconds")
+            except (ValueError, OverflowError):
+                raise ApiError(
+                    422, "invalid_input", "closed_since must be an ISO 8601 timestamp with a timezone."
+                ) from None
+            clauses.append("t.closed_at >= ?")
+            params.append(normalized)
         base = " AND ".join(clauses) or "1=1"
-        if sort == "hot":
+        if sort in ("hot", "closed"):
             pinned = []
             rest = fetch_threads(conn, user["id"], base, tuple(params), sort, limit + 1, offset, order)
         else:
@@ -334,23 +351,23 @@ def message_context(message_id: int, request: Request):
         chain_ids.reverse()
         root_id, below_root = chain_ids[0], chain_ids[1:]
         thread = get_thread_json(conn, user["id"], target["thread_id"])
-        top_level = fetch_messages(
+        where = "m.thread_id = ? AND ((m.parent_id IS NULL AND m.id <= ?)"
+        params = (target["thread_id"], root_id)
+        if below_root:
+            where += f" OR m.id IN ({','.join('?' * len(below_root))})"
+            params += tuple(below_root)
+        messages = fetch_messages(
             conn,
             user["id"],
-            "m.thread_id = ? AND m.parent_id IS NULL AND m.id <= ?",
-            (target["thread_id"], root_id),
+            where + ")",
+            params,
         )
-        by_id = {
-            m["id"]: m
-            for m in fetch_messages(
-                conn, user["id"], f"m.id IN ({','.join('?' * len(below_root))})", tuple(below_root)
-            )
-        } if below_root else {}
+        by_id = {m["id"]: m for m in messages}
         return {
             "area": area_json(get_area(conn, thread["area_id"])),
             "thread": thread,
             "target_id": message_id,
-            "top_level": top_level,
+            "top_level": [m for m in messages if m["parent_id"] is None],
             "chain": [by_id[i] for i in below_root],
         }
 
