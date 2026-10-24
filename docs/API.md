@@ -52,7 +52,7 @@ Thread summary:
  importance (= OP score only), op_message_id, message_count,
  pending_attention (viewer's unacknowledged messages in this thread; 0 when closed)}
 ```
-- `GET /api/threads?area_id=&state=active|closed|all&sort=created|activity|importance|hot&order=desc|asc&limit=100&offset=0`
+- `GET /api/threads?area_id=&state=active|closed|all|completed|archived&sort=created|activity|importance|hot|closed&order=desc|asc&closed_since=&limit=100&offset=0`
   -> `{pinned:[summary], threads:[summary], has_more}`. `pinned` is a separate group (not paginated,
   same sort) and excluded from `threads`; `offset`/`limit` page only `threads`, `has_more` says
   whether a next page exists (clients render `pinned` from the first page only). Default
@@ -63,7 +63,13 @@ Thread summary:
   `last_activity_at`. Score matters most. Each +2 score keeps the rank while (1 + idle days) doubles.
   Ties go to last activity, then id. For `hot`, pins are not split out: `pinned` is `[]` and `threads`
   includes the pinned threads. Omit `area_id` to rank all areas.
-  Closed threads appear only with `state=closed|all`.
+  `state=closed` includes both close reasons; `completed` selects only completed closes and `archived` only archived closes.
+  `state=all` also includes active threads.
+  `sort=closed` orders by `closed_at`, then id, in the requested direction, with active threads last.
+  It is accepted with `state=active`. Pins are not split out for `closed`, either.
+  `closed_since` accepts an ISO 8601 timestamp with a timezone and converts it to UTC; it keeps closes at or after
+  that instant and excludes active threads, regardless of `state`. Invalid or timezone-free values return 422 `invalid_input`.
+  Example: `GET /api/threads?state=completed&sort=closed&closed_since=2026-10-17T00:00:00Z&limit=5`.
 - `POST /api/threads` `{area_id, title (1-200), body (1-20000), attachment_ids?}` -> 201 thread detail.
   Body becomes the OP message; `attachment_ids` (max 10) are linked to it. This is also the migration/creation endpoint for agents.
 - `GET /api/threads/{id}` -> `{thread, area, messages:[message]}` (all messages flat, id asc;
@@ -90,8 +96,20 @@ Closed thread: every write (messages, edits, votes, reactions add/remove, pin) -
  author:{id,username,account_type}, body, created_at, edited_at|null, deleted_at|null,
  attachments:[{id,filename,content_type,size,url}], score,
  reactions:[{emoji, count, users:[username], mine}],
- my_attention: null | {status, reason}, agent_sessions:[session], thread_closed_reason: null|"completed"|"archived", context_url}
+ my_attention: null | {status, reason}, agent_sessions:[session], thread_closed_reason: null|"completed"|"archived", context_url,
+ linked_threads:{"<id>":{id,title,area_slug,closed_reason:null|"completed"|"archived"}}}
 ```
+`linked_threads` maps the existing thread ids referenced in the body to their current titles, area slugs and close reasons;
+it is `{}` when no ids resolve. The field accompanies every message projection, including context, attention and search hits.
+References resolve at read time, so a rename updates old links without rewriting messages. No schema change is required.
+
+Write `#<id>` in a message POST or PATCH body to link a thread; no special field is needed.
+The `#` must start a line or follow whitespace, `(` or `[`, and the ASCII digits must not be followed by a letter, digit or `_`.
+`#42`, `see #42.` and `(#42)` count; `a#42`, `#42abc`, `&#42;`, `/#42` and `https://x.com/?q=#42` do not.
+References create no attention. The UI renders existing references as title pill links with a closed mark where applicable,
+and leaves unknown ids and code spans/blocks literal. JSON may resolve ids inside code; rendering is the client's decision.
+Pill titles support inline Markdown without nested links; ordinary thread titles and area descriptions do not render pills.
+
 - `GET /api/messages/{id}` -> message.
 - `PATCH /api/messages/{id}` `{body (1-20000)}` -> message. Author only (403 `not_author`); sets `edited_at`,
   records a `message_edited` event; creates no new attention (mentions in edits notify nobody).
@@ -177,7 +195,7 @@ Search/activity items that carry `area_name` also carry `area_slug` (areas carry
 
 - `GET /api/search?q=&include_closed=false&area_id=&limit=50&areas_offset=0&threads_offset=0&messages_offset=0` -> `{query, has_more:{areas,threads,messages}, areas:[{id,name,slug,snippet}],
   threads:[{id,title,area_id,area_name,area_slug,edited_at,closed_reason}], messages:[{id,thread_id,thread_title,
-  area_id,area_name,area_slug,parent_id,author,created_at,edited_at,snippet,closed_reason,context_url}]}`.
+  area_id,area_name,area_slug,parent_id,author,created_at,edited_at,snippet,closed_reason,context_url,linked_threads}]}`.
   Case-insensitive substring over area name/description, thread title, message body
   (`%`/`_` literal). Closed-thread hits only with `include_closed=true`. Plain text only. `limit` applies per category;
   each category pages independently via its own offset, `has_more` flags which have more.

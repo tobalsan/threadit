@@ -117,6 +117,7 @@ def search(
                     "created_at": m["created_at"],
                     "edited_at": m["edited_at"],
                     "snippet": _snippet(m["body"], term),
+                    "linked_threads": m["linked_threads"],
                     "closed_reason": closed_by_message[m["id"]],
                     "context_url": m["context_url"],
                 }

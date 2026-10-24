@@ -6,6 +6,8 @@ import sqlite3
 from threadit.core import ApiError
 from threadit.sessions import fetch_sessions
 
+_THREAD_REFERENCE = re.compile(r"(?<![^\s(\[])#([0-9]+)(?![A-Za-z0-9_])")
+
 _MESSAGE_SQL = """
 SELECT m.id, m.thread_id, m.parent_id, m.is_op, m.body, m.created_at, m.score, m.edited_at,
        m.deleted_at,
@@ -45,6 +47,7 @@ LEFT JOIN users cb ON cb.id = t.closed_by
 THREAD_ORDERS = {
     "created": "t.created_at {d}, t.id {d}",
     "activity": "t.last_activity_at {d}, t.id {d}",
+    "closed": "t.closed_at IS NULL ASC, t.closed_at {d}, t.id {d}",
     "hot": "op.score - 2.0 * log2(1 + MAX(0, julianday('now') - julianday(t.last_activity_at))) {d},"
     " t.last_activity_at {d}, t.id {d}",
     "importance": "op.score {d}, t.last_activity_at {d}, t.created_at {d}, t.id {d}",
@@ -251,7 +254,31 @@ def fetch_messages(
                 "context_url": f"/api/messages/{r['id']}/context",
             }
         )
+    link_threads(conn, out)
     return out
+
+
+def link_threads(conn: sqlite3.Connection, messages: list[dict]) -> None:
+    """Resolve all references in a message response together, at read time."""
+    references = [
+        {ref.lstrip("0") or "0" for ref in _THREAD_REFERENCE.findall(m["body"])}
+        for m in messages
+    ]
+    ids = set().union(*references)
+    linked = {}
+    if ids:
+        marks = ",".join("?" * len(ids))
+        linked = {
+            str(r["id"]): dict(r)
+            for r in conn.execute(
+                "SELECT t.id, t.title, a.slug AS area_slug, t.closed_reason"
+                " FROM threads t JOIN areas a ON a.id = t.area_id"
+                f" WHERE t.id IN ({marks})",
+                tuple(ids),
+            )
+        }
+    for message, refs in zip(messages, references):
+        message["linked_threads"] = {ref: linked[ref] for ref in refs if ref in linked}
 
 
 def get_message_json(conn: sqlite3.Connection, viewer_id: int, message_id: int) -> dict:
