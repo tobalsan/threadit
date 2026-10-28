@@ -171,15 +171,16 @@ def test_invalid_attachment_ids(admin, alice, area):
 # ---------- editing ----------
 
 
-def test_edit_message_rules(admin, alice, area):
+def test_edit_message_rules(admin, alice, bob, bot, area):
     tid = alice.make_thread(area["id"])["thread"]["id"]
     msg = alice.say(tid, "first")
     assert msg["edited_at"] is None
     edited = alice.ok("PATCH", f"/api/messages/{msg['id']}", {"body": "second"})
     assert edited["body"] == "second" and edited["edited_at"]
     assert alice.ok("GET", f"/api/messages/{msg['id']}")["edited_at"] == edited["edited_at"]
-    denied = admin.call("PATCH", f"/api/messages/{msg['id']}", json={"body": "hack"})
-    assert denied.status_code == 403 and denied.json()["error"]["code"] == "not_author"
+    for actor in (bob, bot):
+        denied = actor.call("PATCH", f"/api/messages/{msg['id']}", json={"body": "hack"})
+        assert denied.status_code == 403 and denied.json()["error"]["code"] == "not_author"
     assert alice.call("PATCH", f"/api/messages/{msg['id']}", json={"body": ""}).status_code == 422
     assert alice.call("PATCH", "/api/messages/999", json={"body": "x"}).status_code == 404
     assert alice.call("PATCH", f"/api/messages/{msg['id']}", json={"x": 1}).status_code == 422
@@ -193,6 +194,24 @@ def test_edit_message_rules(admin, alice, area):
     alice.ok("POST", f"/api/threads/{tid}/close", {"reason": "completed"})
     closed = alice.call("PATCH", f"/api/messages/{msg['id']}", json={"body": "late"})
     assert closed.status_code == 409 and closed.json()["error"]["code"] == "thread_closed"
+
+
+def test_superadmin_edits_any_message(admin, alice, bot, area):
+    thread = alice.make_thread(area["id"])
+    tid = thread["thread"]["id"]
+    messages = [thread["messages"][0], alice.say(tid, "human reply"), bot.say(tid, "agent reply")]
+    attention_before = alice.attention()
+    for message in messages:
+        edited = admin.ok("PATCH", f"/api/messages/{message['id']}", {"body": "corrected @botty"})
+        assert edited["body"] == "corrected @botty"
+        assert edited["edited_at"]
+        assert edited["author"] == message["author"]
+        assert alice.ok("GET", f"/api/messages/{message['id']}")["body"] == "corrected @botty"
+        event = admin.ok("GET", "/api/activity")["events"][0]
+        assert event["kind"] == "message_edited"
+        assert event["actor"]["id"] == admin.id
+    assert bot.attention() == {}
+    assert alice.attention() == attention_before
 
 
 def test_edit_message_creates_no_attention(admin, alice, bot, area):

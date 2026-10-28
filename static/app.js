@@ -1548,8 +1548,8 @@
           ex.querySelector('textarea').focus();
         } });
         hov.appendChild(reactBtn); hov.appendChild(rb);
-        // Edit and Delete sit in a "More actions" menu, only on your own messages
-        if (me.id === m.author.id) hov.appendChild(el('button', { type: 'button', class: 'link more', disabled: editing, 'aria-label': 'More actions', title: 'More actions', 'aria-haspopup': 'menu', 'aria-expanded': 'false', text: '⋯', onclick: function (ev) {
+        // Edit and Delete sit in a "More actions" menu for the author or superadmin
+        if (me.id === m.author.id || me.is_superadmin) hov.appendChild(el('button', { type: 'button', class: 'link more', disabled: editing, 'aria-label': 'More actions', title: 'More actions', 'aria-haspopup': 'menu', 'aria-expanded': 'false', text: '⋯', onclick: function (ev) {
           var btn = ev.currentTarget;
           openPop(btn, el('div', { class: 'pop', role: 'menu', 'aria-label': 'More actions' },
             el('button', { type: 'button', role: 'menuitem', text: 'Edit', onclick: function () { closePop(false); editing = true; paint(); } }),
