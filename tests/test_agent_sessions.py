@@ -130,6 +130,171 @@ def test_stop_errors(admin, bot, bot2, item):
     assert r.status_code == 409 and r.json()["error"]["code"] == "thread_closed"
 
 
+def test_retry_failed_run(admin, alice, bot, item):
+    tid, mid = item
+    bot.react(mid, "👀")
+    activity(bot, mid, "error", "Run failed")
+    reply = bot.say(tid, "I could not finish this request.")
+    before = admin.ok("GET", f"/api/threads/{tid}")["thread"]["last_activity_at"]
+
+    s = alice.ok("POST", f"/api/messages/{mid}/agent-sessions/BOTTY/retry")
+
+    assert s["state"] == "queued" and s["status"] == "unacknowledged"
+    assert s["stop_requested"] is None and s["reply_id"] is None
+    assert s["activities"][-1]["kind"] == "thought"
+    assert s["activities"][-1]["body"] == "Retry requested by @alice"
+    assert s["activities"][-1]["ephemeral"] is False
+    message = admin.ok("GET", f"/api/messages/{mid}")
+    assert message["agent_sessions"][0] == s
+    assert message["reactions"] == []
+    assert bot.attention()[mid]["status"] == "unacknowledged"
+    assert admin.get(f"/api/messages/{reply['id']}").status_code == 404
+    thread = admin.ok("GET", f"/api/threads/{tid}")
+    assert [m["id"] for m in thread["messages"]] == [mid]
+    assert thread["thread"]["last_activity_at"] == before
+
+
+@pytest.mark.parametrize("state,code", [
+    ("queued", "not_retryable"),
+    ("working", "not_retryable"),
+    ("needs_input", "not_retryable"),
+    ("done", "already_finished"),
+])
+def test_retry_refuses_non_error_sessions(admin, bot, item, state, code):
+    _, mid = item
+    if state != "queued":
+        bot.react(mid, "👀")
+    if state == "needs_input":
+        activity(bot, mid, "elicitation", "Which option?")
+    if state == "done":
+        activity(bot, mid, "error", "Run failed")
+        bot.react(mid, "✅")
+    before = sessions(admin, mid)
+
+    r = admin.call("POST", f"/api/messages/{mid}/agent-sessions/botty/retry")
+
+    assert r.status_code == 409 and r.json()["error"]["code"] == code
+    assert sessions(admin, mid) == before
+
+
+def test_retry_permissions_and_guard_order(admin, bot, bot2, item):
+    tid, mid = item
+    activity(bot, mid, "error", "Run failed")
+    r = bot.call("POST", f"/api/messages/{mid}/agent-sessions/botty/retry")
+    assert r.status_code == 403 and r.json()["error"]["code"] == "forbidden"
+    for ref in ("robo", "nobody", "999", "root"):
+        r = admin.call("POST", f"/api/messages/{mid}/agent-sessions/{ref}/retry")
+        assert r.status_code == 404 and r.json()["error"]["code"] == "not_found"
+    r = bot.call("POST", "/api/messages/999/agent-sessions/botty/retry")
+    assert r.status_code == 404 and r.json()["error"]["code"] == "message_not_found"
+    admin.ok("DELETE", f"/api/messages/{mid}")
+    r = bot.call("POST", f"/api/messages/{mid}/agent-sessions/botty/retry")
+    assert r.status_code == 409 and r.json()["error"]["code"] == "message_deleted"
+    admin.ok("POST", f"/api/threads/{tid}/close", {"reason": "archived"})
+    for caller in (admin, bot):
+        r = caller.call("POST", f"/api/messages/{mid}/agent-sessions/botty/retry")
+        assert r.status_code == 409 and r.json()["error"]["code"] == "thread_closed"
+
+
+@pytest.mark.parametrize("deleted_child", [False, True])
+def test_retry_keeps_deleted_card_when_failure_reply_has_children(admin, bot, item, deleted_child):
+    tid, mid = item
+    bot.react(mid, "👀")
+    activity(bot, mid, "error", "Run failed")
+    reply = bot.say(tid, "I could not finish this request.")
+    child = admin.say(tid, "Please try again", reply["id"])
+    if deleted_child:
+        admin.ok("DELETE", f"/api/messages/{child['id']}")
+
+    s = admin.ok("POST", f"/api/messages/{mid}/agent-sessions/botty/retry")
+
+    assert s["state"] == "queued" and s["reply_id"] is None
+    card = admin.ok("GET", f"/api/messages/{reply['id']}")
+    assert card["deleted_at"] and card["body"] == ""
+    assert admin.ok("GET", f"/api/messages/{child['id']}")["parent_id"] == reply["id"]
+    thread = admin.ok("GET", f"/api/threads/{tid}")
+    assert [m["id"] for m in thread["messages"]] == [mid, reply["id"], child["id"]]
+
+
+@pytest.mark.parametrize("stopping", [False, True])
+def test_retry_clears_stop_and_can_only_be_requested_once(admin, bot, item, stopping):
+    _, mid = item
+    bot.react(mid, "👀")
+    activity(bot, mid, "error", "Run failed")
+    if stopping:
+        s = admin.ok("POST", f"/api/messages/{mid}/agent-sessions/botty/stop")
+        assert s["state"] == "stopping"
+    else:
+        bot.ok("DELETE", f"/api/messages/{mid}/reactions/👀")
+    before = sessions(admin, mid)[0]["updated_at"]
+
+    s = admin.ok("POST", f"/api/messages/{mid}/agent-sessions/{bot.id}/retry")
+
+    assert s["state"] == "queued" and s["stop_requested"] is None
+    assert s["updated_at"] > before
+    poll = bot.ok("GET", "/api/attention?status=unacknowledged")["items"][0]
+    assert poll["id"] == mid and poll["reactions"] == []
+    assert poll["agent_sessions"][0] == s
+    r = admin.call("POST", f"/api/messages/{mid}/agent-sessions/botty/retry")
+    assert r.status_code == 409 and r.json()["error"]["code"] == "not_retryable"
+    assert sessions(admin, mid)[0] == s
+
+
+@pytest.mark.parametrize("op_target", [False, True])
+def test_retry_removes_only_later_replies_to_its_target(admin, bot, bot2, item, op_target):
+    tid, op = item
+    mid = op if op_target else admin.say(tid, "Please help @botty")["id"]
+    earlier = bot.say(tid, "Previous answer", mid)
+    bot.react(mid, "👀")
+    activity(bot, mid, "error", "Run failed")
+    failures = [bot.say(tid, body, mid) for body in ("Failure one", "Failure two")]
+    other_agent = bot2.say(tid, "Other agent's answer", mid)
+    other_target = admin.say(tid, "Another question")
+    unrelated = bot.say(tid, "Answer to another question", other_target["id"])
+
+    s = admin.ok("POST", f"/api/messages/{mid}/agent-sessions/botty/retry")
+
+    assert s["reply_id"] == earlier["id"]
+    for reply in failures:
+        assert admin.get(f"/api/messages/{reply['id']}").status_code == 404
+    for reply in (earlier, other_agent, unrelated):
+        assert admin.ok("GET", f"/api/messages/{reply['id']}")["body"] == reply["body"]
+    messages = admin.ok("GET", f"/api/threads/{tid}")["messages"]
+    assert all(m["id"] not in [r["id"] for r in failures] for m in messages)
+
+
+def test_retry_hard_deletes_failure_reply_with_references(admin, bot, bot2, item):
+    tid, mid = item
+    activity(bot, mid, "error", "Run failed")
+    upload = bot.ok("POST", "/api/attachments?filename=failure.txt", status=201, content=b"failure details")
+    reply = bot.ok("POST", f"/api/threads/{tid}/messages", {
+        "body": "I could not finish this request. @robo", "attachment_ids": [upload["id"]],
+    }, 201)
+    admin.react(reply["id"], "👍")
+    admin.ok("POST", f"/api/messages/{reply['id']}/votes", {"delta": 1})
+    activity(bot2, reply["id"], "thought", "Looking into it")
+
+    s = admin.ok("POST", f"/api/messages/{mid}/agent-sessions/botty/retry")
+
+    assert s["reply_id"] is None
+    assert admin.get(f"/api/messages/{reply['id']}").status_code == 404
+    assert admin.get(f"/api/attachments/{upload['id']}").status_code == 404
+    assert reply["id"] not in bot2.attention()
+    assert "I could not finish this request." not in admin.get("/api/activity").text
+
+
+def test_reply_id_ignores_agent_deleted_reply(admin, bot, item):
+    tid, mid = item
+    earlier = bot.say(tid, "Earlier answer")
+    latest = bot.say(tid, "Deleted answer")
+    assert sessions(admin, mid)[0]["reply_id"] == latest["id"]
+
+    bot.ok("DELETE", f"/api/messages/{latest['id']}")
+    assert sessions(admin, mid)[0]["reply_id"] == earlier["id"]
+    bot.ok("DELETE", f"/api/messages/{earlier['id']}")
+    assert sessions(admin, mid)[0]["reply_id"] is None
+
+
 def test_sessions_on_every_message_shape_ordered_by_username(admin, bot, bot2, area):
     t = admin.make_thread(area["id"], body="@robo and @botty")
     mid = t["messages"][0]["id"]

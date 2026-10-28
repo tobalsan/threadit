@@ -78,7 +78,7 @@ def _build(conn: sqlite3.Connection, rows: list[sqlite3.Row]) -> dict[int, list[
             "SELECT target, author_id, MAX(id) AS reply_id FROM ("
             "SELECT m.id, m.author_id, COALESCE(m.parent_id, op.id) AS target FROM messages m"
             " LEFT JOIN messages op ON m.parent_id IS NULL AND m.is_op = 0"
-            " AND op.thread_id = m.thread_id AND op.is_op = 1)"
+            " AND op.thread_id = m.thread_id AND op.is_op = 1 WHERE m.deleted_at IS NULL)"
             f" WHERE target IN ({marks}) GROUP BY target, author_id",
             chunk,
         ):
@@ -170,11 +170,7 @@ def add_activity(
     return _session(conn, message_id, user["id"])
 
 
-def request_stop(
-    conn: sqlite3.Connection, user: sqlite3.Row, message_id: int, agent_ref: str
-) -> dict:
-    if user["account_type"] != "human":
-        raise ApiError(403, "forbidden", "Only a human can stop an agent session.")
+def _agent_attention(conn: sqlite3.Connection, message_id: int, agent_ref: str) -> sqlite3.Row:
     if agent_ref.isascii() and agent_ref.isdigit():
         agent = conn.execute(
             "SELECT id FROM users WHERE id = ? AND account_type = 'agent'", (int(agent_ref),)
@@ -187,17 +183,76 @@ def request_stop(
     row = None
     if agent is not None:
         row = conn.execute(
-            "SELECT status, stop_requested_at FROM attention WHERE message_id = ? AND user_id = ?",
+            "SELECT user_id, status, stop_requested_at FROM attention WHERE message_id = ? AND user_id = ?",
             (message_id, agent["id"]),
         ).fetchone()
     if row is None:
         raise ApiError(404, "not_found", f"Agent {agent_ref} has no session on this message.")
+    return row
+
+
+def request_stop(
+    conn: sqlite3.Connection, user: sqlite3.Row, message_id: int, agent_ref: str
+) -> dict:
+    if user["account_type"] != "human":
+        raise ApiError(403, "forbidden", "Only a human can stop an agent session.")
+    row = _agent_attention(conn, message_id, agent_ref)
     if row["status"] == "processed":
         raise ApiError(409, "already_finished", "This agent session is already finished.")
     if row["stop_requested_at"] is None:
         conn.execute(
             "UPDATE attention SET stop_requested_at = ?, stop_requested_by = ?"
             " WHERE message_id = ? AND user_id = ?",
-            (now(), user["id"], message_id, agent["id"]),
+            (now(), user["id"], message_id, row["user_id"]),
         )
-    return _session(conn, message_id, agent["id"])
+    return _session(conn, message_id, row["user_id"])
+
+
+def request_retry(
+    conn: sqlite3.Connection, user: sqlite3.Row, message_id: int, agent_ref: str
+) -> dict:
+    if user["account_type"] != "human":
+        raise ApiError(403, "forbidden", "Only a human can retry an agent session.")
+    row = _agent_attention(conn, message_id, agent_ref)
+    if row["status"] == "processed":
+        raise ApiError(409, "already_finished", "This agent session is already finished.")
+    agent_id = row["user_id"]
+    last = conn.execute(
+        "SELECT kind, created_at FROM agent_activities"
+        " WHERE message_id = ? AND user_id = ? ORDER BY id DESC LIMIT 1",
+        (message_id, agent_id),
+    ).fetchone()
+    if last is None or last["kind"] != "error":
+        raise ApiError(409, "not_retryable", "Only a failed agent session can be retried.")
+    ts = now()
+    conn.execute(
+        "DELETE FROM reactions WHERE message_id = ? AND user_id = ? AND emoji = '👀'",
+        (message_id, agent_id),
+    )
+    conn.execute(
+        "UPDATE attention SET status = 'unacknowledged', updated_at = ?,"
+        " stop_requested_at = NULL, stop_requested_by = NULL"
+        " WHERE message_id = ? AND user_id = ?",
+        (ts, message_id, agent_id),
+    )
+    replies = conn.execute(
+        "SELECT reply.id FROM messages reply JOIN messages target ON target.id = ?"
+        " WHERE reply.thread_id = target.thread_id AND reply.author_id = ?"
+        " AND reply.deleted_at IS NULL AND reply.created_at > ?"
+        " AND (reply.parent_id = target.id"
+        " OR (target.is_op = 1 AND reply.parent_id IS NULL AND reply.is_op = 0))",
+        (message_id, agent_id, last["created_at"]),
+    ).fetchall()
+    for reply in replies:
+        if conn.execute("SELECT 1 FROM messages WHERE parent_id = ?", (reply["id"],)).fetchone():
+            conn.execute("UPDATE messages SET deleted_at = ? WHERE id = ?", (ts, reply["id"]))
+            continue
+        for table in ("reactions", "votes", "attention", "agent_activities", "events", "attachments"):
+            conn.execute(f"DELETE FROM {table} WHERE message_id = ?", (reply["id"],))
+        conn.execute("DELETE FROM messages WHERE id = ?", (reply["id"],))
+    conn.execute(
+        "INSERT INTO agent_activities (message_id, user_id, kind, body, ephemeral, created_at)"
+        " VALUES (?, ?, 'thought', ?, 0, ?)",
+        (message_id, agent_id, f"Retry requested by @{user['username']}", ts),
+    )
+    return _session(conn, message_id, agent_id)
