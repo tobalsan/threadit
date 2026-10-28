@@ -1325,7 +1325,8 @@
     function row(s) {
       var last = s.activities.length ? s.activities[s.activities.length - 1] : null;
       var finished = s.state === 'done' || s.state === 'stopped';
-      var canStop = me.account_type === 'human' && !ctx.closed && !m.thread_closed_reason && !finished && s.state !== 'stopping';
+      var canStop = me.account_type === 'human' && !ctx.closed && !m.thread_closed_reason && !finished && s.state !== 'stopping' && s.state !== 'error';
+      var canRetry = me.account_type === 'human' && !ctx.closed && !m.thread_closed_reason && last && last.kind === 'error' && (s.state === 'error' || s.state === 'stopping');
       var expanded = !!open[s.agent.id];
       var head = el('div', { class: 'arow' },
         el('button', { type: 'button', class: 'link atoggle', 'aria-expanded': String(expanded), title: expanded ? 'Hide activity' : 'Show activity', text: (expanded ? '▾ ' : '▸ ') + s.agent.username, onclick: function () { open[s.agent.id] = !open[s.agent.id]; repaint(m.agent_sessions); } }),
@@ -1338,6 +1339,16 @@
           act(ev.currentTarget, function () { return api('POST', '/api/messages/' + m.id + '/agent-sessions/' + encodeURIComponent(s.agent.username) + '/stop').then(function (ns) {
             m.agent_sessions = m.agent_sessions.map(function (x) { return x.agent.id === ns.agent.id ? ns : x; });
             repaint(m.agent_sessions); if (stopNav === navId) startSessionPoll(ctx);
+          }); });
+        } }) : null,
+        canRetry ? el('button', { type: 'button', class: 'small', text: 'Retry', 'aria-label': 'Retry ' + s.agent.username, onclick: function (ev) {
+          var retryNav = navId;
+          act(ev.currentTarget, function () { return api('POST', '/api/messages/' + m.id + '/agent-sessions/' + encodeURIComponent(s.agent.username) + '/retry').then(function (ns) {
+            m.agent_sessions = m.agent_sessions.map(function (x) { return x.agent.id === ns.agent.id ? ns : x; });
+            repaint(m.agent_sessions);
+            if (retryNav !== navId) return;
+            startSessionPoll(ctx);
+            if (ctx.added) ctx.added(); // Refresh the thread to remove hard-deleted failure replies too.
           }); });
         } }) : null);
       var wrap = el('div', { class: 'asession' }, head);

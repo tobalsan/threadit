@@ -137,7 +137,7 @@ Pill titles support inline Markdown without nested links; ordinary thread titles
 A session is the attention row of an agent on a message. No separate table. State is derived on read.
 Session: `{agent:{id,username,account_type}, reason, status, state, created_at, updated_at,
 last_activity_at|null, stop_requested: null|{at, by}, reply_id|null, activities:[{id,kind,body,ephemeral,created_at}]}`.
-`reply_id` = newest message by that agent with `parent_id` = this message (for the OP: newest top-level reply by that agent). `activities`: newest 50, oldest first.
+`reply_id` = newest non-deleted message by that agent with `parent_id` = this message (for the OP: newest non-deleted top-level reply by that agent), or null if none survives. `activities`: newest 50, oldest first.
 
 State, first match wins: `processed`+stop -> `stopped`; `processed` -> `done`; stop -> `stopping`;
 `unacknowledged` -> `queued`; last activity `elicitation` -> `needs_input`; last activity `error` -> `error`;
@@ -150,6 +150,16 @@ no activity and no status change for 30 minutes -> `stale`; else `working`.
 - `POST /api/messages/{id}/agent-sessions/{agent}/stop` (`{agent}` = username or id) -> session. Approved humans only
   (403 `forbidden`). Idempotent; first request wins. 404 `not_found` without a session; 409 `already_finished` when
   `processed`; 409 `thread_closed`.
+- `POST /api/messages/{id}/agent-sessions/{agent}/retry` (no body; `{agent}` = username or id) -> session.
+  Checks the writable message first: 404 `message_not_found`; 409 `thread_closed` / `message_deleted`.
+  Approved humans only (403 `forbidden`); 404 `not_found` without that agent's session;
+  409 `already_finished` when `processed`; 409 `not_retryable` unless the newest activity is `error`.
+  Works for errors with or without a stop request. Removes the agent's 👀, sets `unacknowledged` (`queued`),
+  refreshes `updated_at`, and clears the stop request. Removes that agent's non-deleted replies to the target
+  created after its newest error activity: hard-deletes replies without children (and their associated data),
+  soft-deletes those with children, including deleted children. Earlier replies and other authors' replies survive.
+  Adds a persistent `thought` activity as the agent: `Retry requested by @<human username>`.
+  Does not change the thread's `last_activity_at`. A second Retry is refused until another error activity.
 
 ## Attachments
 

@@ -2,6 +2,7 @@ import base64
 import re
 import time
 
+import pytest
 from playwright.sync_api import expect
 from test_ui_integration import call, login, make_thread, seed_users
 
@@ -1571,6 +1572,79 @@ def test_agent_session_stop_button(server, browser):
         expect(page.get_by_role("button", name="Stop agentx")).to_have_count(0)
         stopped = call(server, "POST", f"/api/messages/{op}/agent-activities", agent, {"kind": "thought", "body": "x"})
         assert stopped["stop_requested"]["by"]["username"] == "hanna"
+    finally:
+        ctx.close()
+
+
+@pytest.mark.parametrize("stopping", [False, True])
+def test_agent_session_retry_button(server, browser, tmp_path, stopping):
+    human, agent = seed_users(server)
+    area = call(server, "POST", "/api/areas", human, {"name": "Retry", "description": "d"})
+    thread = make_thread(server, human, area["id"], "Failed run", "hello @agentx")
+    op = thread["op_message_id"]
+    call(server, "POST", f"/api/messages/{op}/reactions", agent, {"emoji": "👀"})
+    call(server, "POST", f"/api/messages/{op}/agent-activities", agent, {"kind": "error", "body": "Run failed"})
+    call(server, "POST", f"/api/threads/{thread['id']}/messages", agent, {"body": "I could not finish this request."})
+    if stopping:
+        call(server, "POST", f"/api/messages/{op}/agent-sessions/agentx/stop", human)
+    ctx, page = open_page(browser, server, human)
+    try:
+        if stopping:
+            page.set_viewport_size({"width": 390, "height": 844})
+        page.goto(f"{server}/#/thread/{thread['id']}")
+        expect(page.locator(".asession .schip")).to_have_text("Stopping" if stopping else "Error")
+        expect(page.get_by_text("I could not finish this request.", exact=True)).to_be_visible()
+        page.screenshot(path=str(tmp_path / "retry-before.png"), full_page=True)
+        expect(page.get_by_role("button", name="Stop agentx")).to_have_count(0)
+        page.get_by_role("button", name="Retry agentx").click()
+        expect(page.locator(".asession .schip")).to_have_text("Queued")
+        expect(page.get_by_text("I could not finish this request.", exact=True)).to_have_count(0)
+        expect(page.get_by_role("button", name="Retry agentx")).to_have_count(0)
+        page.screenshot(path=str(tmp_path / "retry-after.png"), full_page=True)
+        call(server, "POST", f"/api/messages/{op}/reactions", agent, {"emoji": "👀"})
+        expect(page.locator(".asession .schip")).to_have_text("Working", timeout=8000)
+    finally:
+        ctx.close()
+
+
+@pytest.mark.parametrize("failure", ["http", "timeout"])
+def test_agent_session_retry_recovers_from_request_failure(server, browser, failure):
+    human, agent = seed_users(server)
+    area = call(server, "POST", "/api/areas", human, {"name": "Retry", "description": "d"})
+    thread = make_thread(server, human, area["id"], "Failed run", "hello @agentx")
+    op = thread["op_message_id"]
+    call(server, "POST", f"/api/messages/{op}/reactions", agent, {"emoji": "👀"})
+    call(server, "POST", f"/api/messages/{op}/agent-activities", agent, {"kind": "error", "body": "Run failed"})
+    ctx, page = open_page(browser, server, human)
+    held = []
+    try:
+        page.goto(f"{server}/#/thread/{thread['id']}")
+        retry = page.get_by_role("button", name="Retry agentx")
+        expect(retry).to_be_visible()
+        page.clock.install()
+
+        def fail(route):
+            if failure == "http":
+                route.fulfill(status=503, json={"error": {"code": "unavailable", "message": "Try again later"}})
+            else:
+                held.append(route)
+
+        page.route("**/agent-sessions/agentx/retry", fail, times=1)
+        retry.click()
+        if failure == "timeout":
+            expect(retry).to_be_disabled()
+            page.get_by_role("button", name="Reply to thread").click()
+            page.locator("#top-reply").fill("Draft while waiting")
+            page.clock.run_for(16000)
+            expect(page.get_by_text("Request timed out after 15s. Check connection and retry.")).to_be_visible()
+            expect(page.locator("#top-reply")).to_have_value("Draft while waiting")
+            held[0].abort()
+        else:
+            expect(page.get_by_text("Try again later")).to_be_visible()
+        expect(retry).to_be_enabled()
+        expect(page.locator(".asession .schip")).to_have_text("Error")
+        retry.click()
+        expect(page.locator(".asession .schip")).to_have_text("Queued")
     finally:
         ctx.close()
 

@@ -24,7 +24,7 @@ from threadit.schemas import (
     ThreadPatch,
     VoteIn,
 )
-from threadit.sessions import add_activity, request_stop
+from threadit.sessions import add_activity, request_retry, request_stop
 from threadit.slugs import unique_area_slug
 from threadit.service import (
     add_event,
@@ -435,3 +435,10 @@ def stop_agent_session(message_id: int, agent: str, request: Request):
     with session(request, write=True) as (conn, user):
         _writable_message(conn, message_id)
         return request_stop(conn, user, message_id, agent)
+
+
+@router.post("/api/messages/{message_id}/agent-sessions/{agent}/retry")
+def retry_agent_session(message_id: int, agent: str, request: Request):
+    with session(request, write=True) as (conn, user):
+        _writable_message(conn, message_id)
+        return request_retry(conn, user, message_id, agent)
