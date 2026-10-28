@@ -114,10 +114,10 @@ and leaves unknown ids and code spans/blocks literal. JSON may resolve ids insid
 Pill titles support inline Markdown without nested links; ordinary thread titles and area descriptions do not render pills.
 
 - `GET /api/messages/{id}` -> message.
-- `PATCH /api/messages/{id}` `{body (1-20000)}` -> message. Author only (403 `not_author`); sets `edited_at`,
+- `PATCH /api/messages/{id}` `{body (1-20000)}` -> message. Author or superadmin (403 `not_author` for everyone else); sets `edited_at`,
   records a `message_edited` event; creates no new attention (mentions in edits notify nobody).
-- `DELETE /api/messages/{id}` -> message. Soft delete: the row and body stay in the database. Author only
-  (403 `not_author`); closed thread 409 `thread_closed`; a repeat call returns the same message. A deleted
+- `DELETE /api/messages/{id}` -> message. Soft delete: the row and body stay in the database. Author or superadmin
+  (403 `not_author` for everyone else); closed thread 409 `thread_closed`; a repeat call returns the same message. A deleted
   message has `deleted_at` set, `body` `""`, `attachments` `[]`, and its attachment URLs return 404. It leaves
   attention lists, counts and search. Edit, vote, reaction and reply return 409 `message_deleted`. Exception: a reply to a deleted OP is a top-level reply. Replies stay.
   A delete is not activity: no `last_activity_at` change, no event, no attention.

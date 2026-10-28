@@ -310,8 +310,8 @@ def edit_message(message_id: int, body: MessagePatch, request: Request):
         message = get_message_row(conn, message_id)
         thread = get_thread_row(conn, message["thread_id"])
         require_open(thread)
-        if message["author_id"] != user["id"]:
-            raise ApiError(403, "not_author", "Only the message author can edit it.")
+        if message["author_id"] != user["id"] and not user["is_superadmin"]:
+            raise ApiError(403, "not_author", "Only the message author or superadmin can edit it.")
         require_not_deleted(message)
         conn.execute(
             "UPDATE messages SET body = ?, edited_at = ? WHERE id = ?",
@@ -328,8 +328,8 @@ def delete_message(message_id: int, request: Request):
     with session(request, write=True) as (conn, user):
         message = get_message_row(conn, message_id)
         require_open(get_thread_row(conn, message["thread_id"]))
-        if message["author_id"] != user["id"]:
-            raise ApiError(403, "not_author", "Only the message author can delete it.")
+        if message["author_id"] != user["id"] and not user["is_superadmin"]:
+            raise ApiError(403, "not_author", "Only the message author or superadmin can delete it.")
         conn.execute(
             "UPDATE messages SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL",
             (now(), message_id),
