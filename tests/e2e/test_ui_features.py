@@ -2090,3 +2090,37 @@ def test_thread_shows_references(server, browser):
         expect(page.get_by_text("No other thread links here.")).to_be_visible()
     finally:
         ctx.close()
+
+
+def test_markdown_tables(server, browser):
+    human, _ = seed_users(server)
+    area = call(server, "POST", "/api/areas", human, {"name": "Tables", "description": "d"})
+    body = "\n".join([
+        "| Name | Qty | Note |",
+        "|:-----|----:|:----:|",
+        "| **apple** | 3 | `a|b` |",
+        "pear | 10 | x \\| y | extra",
+        "| plum |",
+        "",
+        "a | b | c",
+        "not a delimiter",
+    ])
+    thread = make_thread(server, human, area["id"], "Tables", body)
+    ctx, page = open_page(browser, server, human)
+    try:
+        page.goto(f"{server}/#/thread/{thread['id']}")
+        msg = page.locator(".msgbody .md").first
+        table = msg.locator(".tablewrap table")
+        expect(table).to_have_count(1)
+        expect(table.locator("thead th")).to_have_text(["Name", "Qty", "Note"])
+        expect(table.locator("tbody tr")).to_have_count(3)
+        expect(table.locator("tbody tr").nth(0).locator("td strong")).to_have_text("apple")
+        expect(table.locator("tbody tr").nth(0).locator("td code")).to_have_text("a|b")
+        expect(table.locator("tbody tr").nth(1).locator("td")).to_have_text(["pear", "10", "x | y"])
+        expect(table.locator("tbody tr").nth(2).locator("td")).to_have_text(["plum", "", ""])
+        expect(table.locator("th").nth(0)).to_have_class("al-left")
+        expect(table.locator("td").nth(1)).to_have_class("al-right")
+        expect(table.locator("th").nth(2)).to_have_class("al-center")
+        expect(msg.locator("p")).to_have_text("a | b | cnot a delimiter")
+    finally:
+        ctx.close()

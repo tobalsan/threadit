@@ -333,6 +333,11 @@ h1.ttitle{font-size:30px;font-weight:800;letter-spacing:-.028em;line-height:1.15
 .md code{background:var(--card2);padding:0 4px;border-radius:5px;font-family:var(--mono);font-size:.9em}.md pre code{background:none;padding:0}
 .md blockquote{border-left:3px solid var(--sep);margin:4px 0;padding-left:10px;color:var(--text2)}
 .md ul,.md ol{margin:4px 0;padding-left:22px}
+.md .tablewrap{overflow-x:auto;margin:6px 0;max-width:100%}
+.md table{border-collapse:collapse;font-size:.95em}
+.md th,.md td{border:1px solid var(--sep);padding:4px 8px;text-align:left;vertical-align:top}
+.md th{font-weight:600;background:var(--card2)}
+.md .al-center{text-align:center}.md .al-right{text-align:right}
 .attachments{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:4px 0}
 .thumbbtn{padding:0;border:0;background:var(--card2);line-height:0;border-radius:8px;overflow:hidden}
 .thumb{max-width:160px;max-height:120px;display:block}

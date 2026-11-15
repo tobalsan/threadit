@@ -204,8 +204,30 @@
       }
     }
   }
+  // GFM pipe table cells: `\|` is a literal pipe; a pipe inside a `code` span does not split.
+  function tableCells(line) {
+    var s = line.trim(), cells = [], cur = '', code = false;
+    if (s.charAt(0) === '|') s = s.slice(1);
+    for (var k = 0; k < s.length; k++) {
+      var c = s.charAt(k);
+      if (c === '\\' && s.charAt(k + 1) === '|') { cur += '|'; k++; } else if (c === '`') { code = !code; cur += c; } else if (c === '|' && !code) { cells.push(cur.trim()); cur = ''; } else cur += c;
+    }
+    if (cur.trim() || !/\|\s*$/.test(s) || (code && cur)) cells.push(cur.trim());
+    return cells;
+  }
+  function tableAligns(line) {
+    if (!/\|/.test(line) && !/^\s*:?-+:?\s*$/.test(line)) return null;
+    var cells = tableCells(line);
+    if (!cells.length || !cells.every(function (c) { return /^:?-+:?$/.test(c); })) return null;
+    return cells.map(function (c) { return /^:-+:$/.test(c) ? 'center' : /-:$/.test(c) ? 'right' : /^:/.test(c) ? 'left' : null; });
+  }
+  function tableStart(lines, i) {
+    if (i + 1 >= lines.length || lines[i].indexOf('|') < 0) return null;
+    var aligns = tableAligns(lines[i + 1]);
+    return aligns && tableCells(lines[i]).length === aligns.length ? aligns : null;
+  }
   function mdBlocks(lines, parent, depth, opts, prefixes) {
-    var i = 0, m;
+    var i = 0, m, aligns;
     while (i < lines.length) {
       var line = lines[i];
       if (!line.trim()) { i++; continue; }
@@ -234,10 +256,23 @@
           var li = el('li'); mdInline(lines[i].replace(itemRe, ''), li, opts, 0); list.appendChild(li); i++;
         }
         parent.appendChild(list);
+      } else if ((aligns = tableStart(lines, i))) {
+        var row = function (tag, cells) {
+          var tr = el('tr');
+          aligns.forEach(function (a, k) {
+            var cell = el(tag, { class: a ? 'al-' + a : null });
+            mdInline(cells[k] || '', cell, opts, 0); tr.appendChild(cell);
+          });
+          return tr;
+        };
+        var thead = el('thead', null, row('th', tableCells(lines[i]))), tbody = el('tbody');
+        i += 2;
+        while (i < lines.length && lines[i].trim() && lines[i].indexOf('|') >= 0) tbody.appendChild(row('td', tableCells(lines[i++])));
+        parent.appendChild(el('div', { class: 'tablewrap' }, el('table', null, thead, tbody.firstChild ? tbody : null)));
       } else {
         var p = el('p');
         var first = true;
-        while (i < lines.length && lines[i].trim() && (first || !BLOCK_START.test(lines[i]))) {
+        while (i < lines.length && lines[i].trim() && (first || !(BLOCK_START.test(lines[i]) || tableStart(lines, i)))) {
           if (!first) p.appendChild(el('br'));
           mdInline(lines[i], p, opts, 0, prefixes && prefixes[i]); first = false; i++;
         }
