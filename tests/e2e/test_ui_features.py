@@ -2124,3 +2124,33 @@ def test_markdown_tables(server, browser):
         expect(msg.locator("p")).to_have_text("a | b | cnot a delimiter")
     finally:
         ctx.close()
+
+
+def test_edit_form_removes_and_adds_attachments(server, browser):
+    human, _ = seed_users(server)
+    ctx, page = open_page(browser, server, human)
+    try:
+        call(server, "POST", "/api/areas", human, {"name": "Att edit", "description": "d"})
+        page.goto(f"{server}/#/area/att-edit")
+        page.get_by_role("button", name="New thread").click()
+        page.fill("#th-title", "Swap file")
+        page.fill("#th-body", "see attached")
+        form = page.locator("form.sheet")
+        form.locator("input[type=file]").set_input_files([{"name": "old.png", "mimeType": "image/png", "buffer": PNG}])
+        form.get_by_role("button", name="Create thread").click()
+        expect(page.get_by_role("button", name="Open image old.png")).to_be_visible()
+
+        page.locator(".msg.op > .msgbody").get_by_role("button", name="More actions").click()
+        page.get_by_role("menuitem", name="Edit").click()
+        edit = page.locator(".msgbody form")
+        edit.get_by_role("button", name="Remove attachment old.png").click()
+        edit.locator("input[type=file]").set_input_files([{"name": "new.png", "mimeType": "image/png", "buffer": PNG}])
+        edit.get_by_role("button", name="Save edit").click()
+        expect(page.get_by_role("button", name="Open image new.png")).to_be_visible()
+        expect(page.get_by_role("button", name="Open image old.png")).to_have_count(0)
+        expect(page.locator(".msgbody").first.get_by_text("(modified)")).to_be_visible()
+        thread = call(server, "GET", "/api/threads", human)["threads"][0]
+        msg = call(server, "GET", f"/api/threads/{thread['id']}", human)["messages"][0]
+        assert [a["filename"] for a in msg["attachments"]] == ["new.png"]
+    finally:
+        ctx.close()

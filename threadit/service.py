@@ -72,6 +72,32 @@ def link_attachments(
             )
 
 
+def edit_message_row(
+    conn: sqlite3.Connection,
+    user: sqlite3.Row,
+    thread: sqlite3.Row,
+    message_id: int,
+    body: str | None,
+    attachment_ids: list[int] | None,
+) -> None:
+    """Apply a checked edit: new body and/or the full desired attachment set."""
+    if body is not None:
+        conn.execute("UPDATE messages SET body = ? WHERE id = ?", (body, message_id))
+    if attachment_ids is not None:
+        wanted = list(dict.fromkeys(attachment_ids))
+        current = {
+            r["id"]
+            for r in conn.execute(
+                "SELECT id FROM attachments WHERE message_id = ?", (message_id,)
+            )
+        }
+        removed = current - set(wanted)
+        conn.executemany("DELETE FROM attachments WHERE id = ?", [(i,) for i in removed])
+        link_attachments(conn, user, [i for i in wanted if i not in current], message_id)
+    conn.execute("UPDATE messages SET edited_at = ? WHERE id = ?", (now(), message_id))
+    add_event(conn, "message_edited", user["id"], thread["area_id"], thread["id"], message_id)
+
+
 def insert_message(
     conn: sqlite3.Connection,
     thread: sqlite3.Row,

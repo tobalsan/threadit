@@ -1508,12 +1508,28 @@
       if (draft !== null) ta.value = draft;
       ta.addEventListener('input', function () { draft = ta.value; });
       var err = el('div');
-      var cancel = guardedCancel(function () { return ta.value !== m.body; }, function () { editing = false; draft = null; clearStored(); paint(); });
-      var f = el('form', null, mentionable(ta), err, el('button', { type: 'submit', class: 'primary small', text: 'Save edit' }), ' ',
+      var kept = (m.attachments || []).slice();
+      var picker = filePicker();
+      var keptList = el('ul', { class: 'filelist' });
+      function paintKept() {
+        clear(keptList);
+        kept.forEach(function (a, k) {
+          keptList.appendChild(el('li', null, a.filename + ' (' + fmtSize(a.size) + ') ',
+            el('button', { type: 'button', class: 'small', 'aria-label': 'Remove attachment ' + a.filename, title: 'Remove', text: '×', onclick: function () { kept.splice(k, 1); paintKept(); } })));
+        });
+      }
+      paintKept();
+      function dirty() { return ta.value !== m.body || kept.length !== (m.attachments || []).length || picker.count() > 0; }
+      var cancel = guardedCancel(dirty, function () { editing = false; draft = null; clearStored(); paint(); });
+      var f = el('form', null, mentionable(ta), keptList, picker.node, err, el('button', { type: 'submit', class: 'primary small', text: 'Save edit' }), ' ',
         el('button', { type: 'button', class: 'small', text: 'Cancel', onclick: cancel }));
+      picker.dropTarget(f);
       escCancels(f, cancel);
       formSubmit(f, err, function () {
-        return api('PATCH', '/api/messages/' + m.id, { body: ta.value }).then(function (nm) { m.body = nm.body; m.edited_at = nm.edited_at; m.linked_threads = nm.linked_threads; editing = false; draft = null; clearStored(); paint(); });
+        return picker.upload().then(function (newIds) {
+          if (kept.length + newIds.length > MAX_ATTACHMENTS) throw new Error('At most ' + MAX_ATTACHMENTS + ' attachments.');
+          return api('PATCH', '/api/messages/' + m.id, { body: ta.value, attachment_ids: kept.map(function (a) { return a.id; }).concat(newIds) });
+        }).then(function (nm) { m.body = nm.body; m.attachments = nm.attachments; m.edited_at = nm.edited_at; m.linked_threads = nm.linked_threads; editing = false; draft = null; clearStored(); paint(); });
       });
       return f;
     }

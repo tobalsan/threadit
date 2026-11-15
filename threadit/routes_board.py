@@ -28,6 +28,7 @@ from threadit.sessions import add_activity, request_retry, request_stop
 from threadit.slugs import unique_area_slug
 from threadit.service import (
     add_event,
+    edit_message_row,
     get_message_row,
     get_thread_row,
     insert_message,
@@ -313,13 +314,7 @@ def edit_message(message_id: int, body: MessagePatch, request: Request):
         if message["author_id"] != user["id"] and not user["is_superadmin"]:
             raise ApiError(403, "not_author", "Only the message author or superadmin can edit it.")
         require_not_deleted(message)
-        conn.execute(
-            "UPDATE messages SET body = ?, edited_at = ? WHERE id = ?",
-            (body.body, now(), message_id),
-        )
-        add_event(
-            conn, "message_edited", user["id"], thread["area_id"], thread["id"], message_id
-        )
+        edit_message_row(conn, user, thread, message_id, body.body, body.attachment_ids)
         return get_message_json(conn, user["id"], message_id)
 
 

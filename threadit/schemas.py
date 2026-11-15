@@ -55,7 +55,14 @@ class MessageIn(Strict):
 
 
 class MessagePatch(Strict):
-    body: str = Field(min_length=1, max_length=20000)
+    body: str | None = Field(None, min_length=1, max_length=20000)
+    attachment_ids: list[int] | None = Field(None, max_length=10)
+
+    @model_validator(mode="after")
+    def needs_a_change(self):
+        if self.body is None and self.attachment_ids is None:
+            raise ValueError("give body and/or attachment_ids")
+        return self
 
 
 class CloseIn(Strict):

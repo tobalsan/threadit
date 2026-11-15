@@ -114,7 +114,11 @@ and leaves unknown ids and code spans/blocks literal. JSON may resolve ids insid
 Pill titles support inline Markdown without nested links; ordinary thread titles and area descriptions do not render pills.
 
 - `GET /api/messages/{id}` -> message.
-- `PATCH /api/messages/{id}` `{body (1-20000)}` -> message. Author or superadmin (403 `not_author` for everyone else); sets `edited_at`,
+- `PATCH /api/messages/{id}` `{body? (1-20000), attachment_ids? (max 10)}` -> message. At least one field (422 otherwise); omitted
+  fields stay unchanged. `attachment_ids` is the full desired set: existing ids stay, new ids must be the caller's own unlinked
+  uploads (422 `invalid_attachment`), unlisted attachments are deleted (download 404); `[]` removes all. A superadmin editing
+  another author's message may keep/remove its attachments but only add their own uploads. Closed thread 409 `thread_closed`.
+  Author or superadmin (403 `not_author` for everyone else); sets `edited_at`,
   records a `message_edited` event; creates no new attention (mentions in edits notify nobody).
 - `DELETE /api/messages/{id}` -> message. Soft delete: the row and body stay in the database. Author or superadmin
   (403 `not_author` for everyone else); closed thread 409 `thread_closed`; a repeat call returns the same message. A deleted
