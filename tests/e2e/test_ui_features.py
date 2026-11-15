@@ -2126,6 +2126,38 @@ def test_markdown_tables(server, browser):
         ctx.close()
 
 
+def test_markdown_table_body_boundaries_and_cells(server, browser):
+    human, _ = seed_users(server)
+    area = call(server, "POST", "/api/areas", human, {"name": "Tables2", "description": "d"})
+    body = "\n".join([
+        "a | b", "--- | ---", "one", "two | three", "",
+        "c | d", "--- | ---", "x | y", "# Heading | detail", "",
+        "e | f", "--- | ---", "`literal | second", "",
+        "g | h", "--- | ---", "[site](https://example.com) | https://example.org/x <b>bold</b>",
+    ])
+    thread = make_thread(server, human, area["id"], "Tables2", body)
+    ctx, page = open_page(browser, server, human)
+    try:
+        page.goto(f"{server}/#/thread/{thread['id']}")
+        msg = page.locator(".msgbody .md").first
+        tables = msg.locator(".tablewrap table")
+        expect(tables).to_have_count(4)
+        rows = tables.nth(0).locator("tbody tr")
+        expect(rows).to_have_count(2)
+        expect(rows.nth(0).locator("td")).to_have_text(["one", ""])
+        expect(rows.nth(1).locator("td")).to_have_text(["two", "three"])
+        expect(tables.nth(1).locator("tbody tr")).to_have_count(1)
+        expect(msg.locator("h3, h4, h5, h6").filter(has_text="Heading")).to_have_text("Heading | detail")
+        expect(tables.nth(2).locator("tbody td")).to_have_text(["`literal", "second"])
+        cells = tables.nth(3).locator("tbody td")
+        expect(cells.nth(0).locator("a")).to_have_attribute("href", "https://example.com")
+        expect(cells.nth(1).locator("a")).to_have_attribute("href", "https://example.org/x")
+        expect(cells.nth(1)).to_contain_text("<b>bold</b>")
+        expect(cells.nth(1).locator("b")).to_have_count(0)
+    finally:
+        ctx.close()
+
+
 def test_edit_form_removes_and_adds_attachments(server, browser):
     human, _ = seed_users(server)
     ctx, page = open_page(browser, server, human)

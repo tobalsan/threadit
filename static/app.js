@@ -204,15 +204,16 @@
       }
     }
   }
-  // GFM pipe table cells: `\|` is a literal pipe; a pipe inside a `code` span does not split.
+  // GFM pipe table cells: `\|` is a literal pipe; a pipe inside a matched `code` span does not split
+  // (an unmatched backtick is literal, as in mdInline).
   function tableCells(line) {
     var s = line.trim(), cells = [], cur = '', code = false;
     if (s.charAt(0) === '|') s = s.slice(1);
     for (var k = 0; k < s.length; k++) {
       var c = s.charAt(k);
-      if (c === '\\' && s.charAt(k + 1) === '|') { cur += '|'; k++; } else if (c === '`') { code = !code; cur += c; } else if (c === '|' && !code) { cells.push(cur.trim()); cur = ''; } else cur += c;
+      if (c === '\\' && s.charAt(k + 1) === '|') { cur += '|'; k++; } else if (c === '`') { if (code || s.indexOf('`', k + 2) > k) code = !code; cur += c; } else if (c === '|' && !code) { cells.push(cur.trim()); cur = ''; } else cur += c;
     }
-    if (cur.trim() || !/\|\s*$/.test(s) || (code && cur)) cells.push(cur.trim());
+    if (cur.trim() || !/\|\s*$/.test(s)) cells.push(cur.trim());
     return cells;
   }
   function tableAligns(line) {
@@ -267,7 +268,8 @@
         };
         var thead = el('thead', null, row('th', tableCells(lines[i]))), tbody = el('tbody');
         i += 2;
-        while (i < lines.length && lines[i].trim() && lines[i].indexOf('|') >= 0) tbody.appendChild(row('td', tableCells(lines[i++])));
+        // GFM: body runs until a blank line or another block start; pipe-less lines are one-cell rows
+        while (i < lines.length && lines[i].trim() && !BLOCK_START.test(lines[i])) tbody.appendChild(row('td', tableCells(lines[i++])));
         parent.appendChild(el('div', { class: 'tablewrap' }, el('table', null, thead, tbody.firstChild ? tbody : null)));
       } else {
         var p = el('p');
