@@ -70,3 +70,32 @@ def test_superadmin_keeps_removes_and_adds_own_uploads(admin, alice, area):
     assert r.status_code == 200 and ids(r.json()) == [a1, mine]
     alices = upload(alice).json()["id"]
     assert patch(admin, msg["id"], attachment_ids=[alices]).status_code == 422
+
+
+def test_failed_combined_patch_rolls_back(board, alice, area):
+    import sqlite3
+
+    tid = alice.make_thread(area["id"])["thread"]["id"]
+    msg, (old,) = posted(alice, tid)
+    new = upload(alice).json()["id"]
+
+    def events():
+        with sqlite3.connect(board.path) as conn:
+            return conn.execute("SELECT count(*) FROM events").fetchone()[0]
+
+    before = events()
+    r = patch(alice, msg["id"], body="changed", attachment_ids=[new, 999999])
+    assert r.status_code == 422 and r.json()["error"]["code"] == "invalid_attachment"
+    got = alice.ok("GET", f"/api/messages/{msg['id']}")
+    assert got["body"] == "hi" and got["edited_at"] is None and ids(got) == [old]
+    assert events() == before
+    assert alice.get(f"/api/attachments/{old}").status_code == 200
+    # the new upload stayed unlinked, so it can still be attached
+    assert ids(patch(alice, msg["id"], attachment_ids=[new]).json()) == [new]
+
+
+def test_deleted_message_attachment_patch_409(alice, area):
+    tid = alice.make_thread(area["id"])["thread"]["id"]
+    msg, _ = posted(alice, tid)
+    alice.ok("DELETE", f"/api/messages/{msg['id']}")
+    assert patch(alice, msg["id"], attachment_ids=[]).status_code == 409
