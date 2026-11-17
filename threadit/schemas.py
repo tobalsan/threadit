@@ -23,6 +23,12 @@ class MePatch(Strict):
     description: str | None = Field(default=None, max_length=1000)
     email: str | None = Field(default=None, max_length=300)
 
+    @model_validator(mode="after")
+    def description_not_null(self):
+        if "description" in self.model_fields_set and self.description is None:
+            raise ValueError("description must be a string")
+        return self
+
 
 class LoginIn(Strict):
     token: str = Field(min_length=1, max_length=200)

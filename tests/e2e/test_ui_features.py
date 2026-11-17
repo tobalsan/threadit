@@ -2191,6 +2191,7 @@ def test_edit_form_removes_and_adds_attachments(server, browser):
 def test_profile_email_from_sidebar(server, browser):
     human, _ = seed_users(server)
     ctx, page = open_page(browser, server, human)
+    expect(page.get_by_role("button", name="Edit profile")).to_have_css("display", "flex")
     page.get_by_role("button", name="Edit profile").click()
     page.get_by_label("Email").fill(" Alice@Example.com ")
     page.get_by_role("button", name="Save").click()

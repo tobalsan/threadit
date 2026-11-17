@@ -48,6 +48,7 @@ def test_users_list_and_patch_me(board, alice, bot):
     assert alice.ok("PATCH", "/api/me", {"description": ""})["description"] == ""
     assert alice.call("PATCH", "/api/me", json={"description": "x" * 1001}).status_code == 422
     assert alice.call("PATCH", "/api/me", json={"other": "x"}).status_code == 422
+    assert alice.call("PATCH", "/api/me", json={"description": None}).status_code == 422
     blank = bot.call("PATCH", "/api/me", json={"description": ""})
     assert blank.status_code == 422 and blank.json()["error"]["code"] == "invalid_input"
     assert bot.ok("PATCH", "/api/me", {"description": "new"})["description"] == "new"
