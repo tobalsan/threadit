@@ -63,6 +63,7 @@ def user_json(row: sqlite3.Row) -> dict:
         "is_superadmin": bool(row["is_superadmin"]),
         "created_at": row["created_at"],
         "description": row["description"],
+        "email": row["email"],
     }
 
 

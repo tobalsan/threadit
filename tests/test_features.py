@@ -353,7 +353,7 @@ def test_old_database_is_migrated(tmp_path):
     client = TestClient(create_app(path, static_dir=tmp_path / "nostatic"))
     headers = {"Authorization": "Bearer tok"}
     me = client.get("/api/me", headers=headers).json()
-    assert me["username"] == "old" and me["description"] == ""
+    assert me["username"] == "old" and me["description"] == "" and me["email"] == ""
     areas = client.get("/api/areas", headers=headers).json()["areas"]
     assert {a["name"]: a["slug"] for a in areas} == {
         "Big Ideas": "big-ideas",
@@ -378,6 +378,9 @@ def test_old_database_is_migrated(tmp_path):
         "/api/messages/1", json={"body": "edited"}, headers=headers
     ).json()["edited_at"]
     assert client.patch("/api/me", json={"description": "now set"}, headers=headers).status_code == 200
+    assert client.patch("/api/me", json={"email": "old@example.com"}, headers=headers).json()[
+        "email"
+    ] == "old@example.com"
     created = client.post("/api/areas", json={"name": "big ideas"}, headers=headers)
     assert created.status_code == 409
     new = client.post("/api/areas", json={"name": "Big-Ideas?"}, headers=headers).json()

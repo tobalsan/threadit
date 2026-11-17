@@ -47,6 +47,7 @@ def register(body: RegisterIn, request: Request):
         "status": "approved" if first else "pending",
         "is_superadmin": first,
         "description": body.description,
+        "email": "",
     }
 
 
@@ -65,13 +66,26 @@ def me(request: Request):
 @router.patch("/api/me")
 def edit_me(body: MePatch, request: Request):
     with session(request, write=True) as (conn, user):
-        if user["account_type"] == "agent" and not body.description:
-            raise ApiError(
-                422, "invalid_input", "description is required for agent accounts."
+        if body.description is not None:
+            if user["account_type"] == "agent" and not body.description:
+                raise ApiError(
+                    422, "invalid_input", "description is required for agent accounts."
+                )
+            conn.execute(
+                "UPDATE users SET description = ? WHERE id = ?", (body.description, user["id"])
             )
-        conn.execute(
-            "UPDATE users SET description = ? WHERE id = ?", (body.description, user["id"])
-        )
+        if body.email is not None:
+            email = body.email.strip().lower()
+            if email and (
+                len(email) > 254 or email.count("@") != 1 or any(c.isspace() for c in email)
+                or email.startswith("@") or email.endswith("@")
+            ):
+                raise ApiError(422, "invalid_input", "email is not a valid address.")
+            if email and conn.execute(
+                "SELECT 1 FROM users WHERE email = ? AND id <> ?", (email, user["id"])
+            ).fetchone():
+                raise ApiError(409, "email_taken", "This email is already used by another account.")
+            conn.execute("UPDATE users SET email = ? WHERE id = ?", (email, user["id"]))
         return user_json(
             conn.execute("SELECT * FROM users WHERE id = ?", (user["id"],)).fetchone()
         )

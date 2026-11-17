@@ -619,10 +619,28 @@
     document.body.classList.toggle('anon', !me);
     if (!me) { clear(document.getElementById('nav')); setInspector(null); return; }
     paintNav();
-    box.appendChild(el('div', { class: 'me' }, el('div', { class: 'avatar' + (me.account_type === 'agent' ? ' agent' : ''), 'aria-hidden': 'true', text: me.username.charAt(0).toUpperCase() }),
+    box.appendChild(el('button', { type: 'button', class: 'me', title: 'Edit profile', 'aria-label': 'Edit profile', onclick: openProfile }, el('div', { class: 'avatar' + (me.account_type === 'agent' ? ' agent' : ''), 'aria-hidden': 'true', text: me.username.charAt(0).toUpperCase() }),
       el('span', { class: 'nm' }, who(me)), me.is_superadmin ? el('span', { class: 'badge super', text: 'superadmin' }) : null));
     box.appendChild(el('button', { type: 'button', class: 'lo', 'aria-label': 'Log out', title: 'Log out', onclick: function () { setToken(null); attentionCount = 0; location.hash = '#/'; boot(); } },
       svgIcon('M12 3v8M7.5 6.2a7 7 0 1 0 9 0')));
+  }
+  function openProfile() {
+    var email = el('input', { type: 'email', id: 'me-email', value: me.email || '', autocomplete: 'email', maxlength: '254' });
+    var err = el('div');
+    var d;
+    function done() { d.close(); d.remove(); }
+    var form = el('form', null, el('h2', { text: 'Profile' }), field('Email', email, 'me-email'), err,
+      el('div', { class: 'row2' }, el('button', { type: 'button', text: 'Cancel', onclick: done }),
+        el('button', { type: 'submit', class: 'primary', text: 'Save' })));
+    form.noValidate = true;
+    formSubmit(form, err, function () {
+      return api('PATCH', '/api/me', { email: email.value.trim() }).then(function (u) { me = u; renderChrome(); done(); });
+    });
+    d = el('dialog', { class: 'confirm profile', 'aria-label': 'Profile' }, form);
+    d.addEventListener('cancel', function (ev) { ev.preventDefault(); done(); });
+    d.addEventListener('keydown', function (ev) { ev.stopPropagation(); });
+    document.body.appendChild(d);
+    d.showModal(); email.focus();
   }
   // toolbar: page title and the "New thread" button (shown by views that give a handler)
   var PAGE_TITLES = { '': 'Home', areas: 'Areas', area: 'Area', thread: 'Thread', context: 'Thread', attention: 'Attention', activity: 'Activity', search: 'Search', users: 'Users', admin: 'Admin' };

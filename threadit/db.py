@@ -15,7 +15,8 @@ CREATE TABLE IF NOT EXISTS users (
     is_superadmin INTEGER NOT NULL DEFAULT 0,
     token_hash TEXT NOT NULL UNIQUE,
     created_at TEXT NOT NULL,
-    description TEXT NOT NULL DEFAULT ''
+    description TEXT NOT NULL DEFAULT '',
+    email TEXT NOT NULL DEFAULT ''
 );
 CREATE UNIQUE INDEX IF NOT EXISTS one_superadmin ON users (is_superadmin) WHERE is_superadmin = 1;
 
@@ -126,6 +127,7 @@ CREATE INDEX IF NOT EXISTS attachments_message ON attachments (message_id);
 # Columns added after the first release: (table, column, definition).
 ADDED_COLUMNS = [
     ("users", "description", "TEXT NOT NULL DEFAULT ''"),
+    ("users", "email", "TEXT NOT NULL DEFAULT ''"),
     ("areas", "slug", "TEXT NOT NULL DEFAULT ''"),
     ("threads", "edited_at", "TEXT"),
     ("messages", "edited_at", "TEXT"),
@@ -147,6 +149,7 @@ def migrate(conn: sqlite3.Connection) -> None:
             (unique_area_slug(conn, row["name"], row["id"]), row["id"]),
         )
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS areas_slug ON areas (slug)")
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS users_email ON users (email) WHERE email <> ''")
 
 
 class Database:

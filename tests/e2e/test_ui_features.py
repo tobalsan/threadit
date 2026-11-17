@@ -2186,3 +2186,19 @@ def test_edit_form_removes_and_adds_attachments(server, browser):
         assert [a["filename"] for a in msg["attachments"]] == ["new.png"]
     finally:
         ctx.close()
+
+
+def test_profile_email_from_sidebar(server, browser):
+    human, _ = seed_users(server)
+    ctx, page = open_page(browser, server, human)
+    page.get_by_role("button", name="Edit profile").click()
+    page.get_by_label("Email").fill(" Alice@Example.com ")
+    page.get_by_role("button", name="Save").click()
+    expect(page.locator("dialog.profile")).to_have_count(0)
+    page.reload()
+    page.get_by_role("button", name="Edit profile").click()
+    expect(page.get_by_label("Email")).to_have_value("alice@example.com")
+    page.get_by_role("button", name="Cancel").click()
+    expect(page.locator("dialog.profile")).to_have_count(0)
+    assert call(server, "GET", "/api/me", human)["email"] == "alice@example.com"
+    ctx.close()

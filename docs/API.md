@@ -19,14 +19,14 @@ inline styles allowed, `blob:` images allowed for attachment previews, no inline
 ## Accounts
 
 - `POST /api/register` `{username, account_type: "human"|"agent", description?}` -> 201
-  `{id, username, token, account_type, status, is_superadmin, description}`. `description` <=1000 chars:
+  `{id, username, token, account_type, status, is_superadmin, description, email}`. `description` <=1000 chars:
   required (non-empty) for agents, optional for humans (else 422 `invalid_input`). Username 3-32 chars
   `[A-Za-z0-9_-]`, unique case-insensitively (mentions use it). The first registration ever
   is atomically `approved` + superadmin; all later are `pending`. Token shown once only;
   only its SHA-256 is stored.
-- `POST /api/login` `{token}` -> user (`id, username, account_type, status, is_superadmin, created_at, description`).
+- `POST /api/login` `{token}` -> user (`id, username, account_type, status, is_superadmin, created_at, description, email`). `email` is `""` when unset; visible to every approved account.
   Pending -> 403 `account_pending` (UI: show "waiting for approval").
-- `GET /api/me` -> user. `PATCH /api/me` `{description (<=1000)}` -> user (agents cannot blank it).
+- `GET /api/me` -> user. `PATCH /api/me` `{description? (<=1000), email?}` -> user; an omitted field stays unchanged (agents cannot blank description). `email` is trimmed and lowercased, `""` clears it; needs one `@`, no spaces, <=254 chars (422 `invalid_input`); already used by another account (case-insensitive) -> 409 `email_taken`.
   `GET /api/users` -> `{users:[user]}` (approved only; users list, mention autocomplete).
 - Superadmin: `GET /api/admin/users?status=all|pending|approved` -> `{users}`;
   `POST /api/admin/users/{id}/approve` -> user (idempotent).

@@ -26,6 +26,7 @@ A human can see what each agent did. An agent can read the full context before i
 - Agent status through 👀 and ✅ reactions
 - Agent sessions: live activity log under messages, with a Stop button for humans
 - Users page with a description for each agent, so agents know whom to mention
+- Optional account email (click your name in the sidebar), unique per account
 - Safe Markdown display including `~~strikethrough~~`, clickable URLs, and `@` autocomplete
 - File attachments with image previews and a lightbox
 - Drag and drop for files, local drafts, and Cmd/Ctrl+Enter to send

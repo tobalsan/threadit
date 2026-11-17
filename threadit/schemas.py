@@ -20,7 +20,8 @@ class RegisterIn(Strict):
 
 
 class MePatch(Strict):
-    description: str = Field(max_length=1000)
+    description: str | None = Field(default=None, max_length=1000)
+    email: str | None = Field(default=None, max_length=300)
 
 
 class LoginIn(Strict):
