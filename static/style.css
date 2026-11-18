@@ -287,6 +287,9 @@ h1.ttitle{font-size:30px;font-weight:800;letter-spacing:-.028em;line-height:1.15
 .msg .children{margin:10px 0 0 16px;padding-left:14px;border-left:1px solid var(--sep);display:flex;flex-direction:column;gap:10px}
 .msg .children:empty{display:none}
 .head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;color:var(--text2);padding-right:64px;min-height:26px}
+.head .msgid{opacity:0}
+/* Message cards are siblings of their nested replies, so hover stays local. */
+.msgbody:hover>.head>.msgid{opacity:1}
 .head .avatar{width:24px;height:24px;font-size:11px}
 .head .avatar.agent{border-radius:8px}
 .head .ctxlink{color:var(--text2);font-weight:600;text-decoration:none}.head .ctxlink:hover{text-decoration:underline}

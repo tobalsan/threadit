@@ -18,6 +18,40 @@ def open_page(browser, server, token):
     return ctx, page
 
 
+def test_message_id_shows_only_on_hovered_card_without_layout_shift(server, browser):
+    human, _ = seed_users(server)
+    area = call(server, "POST", "/api/areas", human, {"name": "Message IDs"})
+    thread = make_thread(server, human, area["id"], "Hover IDs")
+    path = f"/api/threads/{thread['id']}/messages"
+    reply = call(server, "POST", path, human, {"body": "Parent reply"})
+    nested = call(server, "POST", path, human, {
+        "body": "Nested reply", "parent_id": reply["id"],
+    })
+    ctx, page = open_page(browser, server, human)
+    try:
+        page.goto(f"{server}/#/thread/{thread['id']}")
+        page.get_by_role("heading", name="Hover IDs", exact=True).hover()
+        ids = [thread["op_message_id"], reply["id"], nested["id"]]
+        cards = [page.locator(f"#m{mid} > .msgbody") for mid in ids]
+        labels = [card.locator(":scope > .head > .msgid") for card in cards]
+        for mid, label in zip(ids, labels):
+            expect(label).to_have_text(f"#{mid}")
+            expect(label).to_have_css("opacity", "0")
+        card_boxes = [card.bounding_box() for card in cards]
+        label_boxes = [label.bounding_box() for label in labels]
+        for hovered, card in enumerate(cards):
+            card.locator(":scope > .head > .avatar").hover()
+            for index, label in enumerate(labels):
+                expect(label).to_have_css("opacity", "1" if index == hovered else "0")
+            assert [card.bounding_box() for card in cards] == card_boxes
+            assert [label.bounding_box() for label in labels] == label_boxes
+        page.get_by_role("heading", name="Hover IDs", exact=True).hover()
+        for label in labels:
+            expect(label).to_have_css("opacity", "0")
+    finally:
+        ctx.close()
+
+
 def test_markdown_renders_and_is_xss_safe(server, browser):
     human, _ = seed_users(server)
     area = call(

@@ -1579,6 +1579,7 @@
         el('span', { class: 'avatar' + (m.author.account_type === 'agent' ? ' agent' : ''), 'aria-hidden': 'true', text: m.author.username.charAt(0).toUpperCase() }),
         who(m.author),
         el('span', { title: fmt(m.created_at), text: ago(m.created_at) }), modified(m),
+        el('span', { class: 'msgid', text: '#' + m.id }),
         gone ? null : pending ? el('span', { class: 'need', title: 'reason: ' + attn.reason, text: 'Needs you' }) : null,
         attn && !pending && !gone ? el('span', { class: 'mut', title: 'reason: ' + attn.reason, text: 'attention: ' + attn.status }) : null,
         links ? el('a', { class: 'ctxlink', href: ctxHref(m), text: 'context' }) : null,
