@@ -349,6 +349,15 @@ h1.ttitle{font-size:30px;font-weight:800;letter-spacing:-.028em;line-height:1.15
 .thumb{max-width:160px;max-height:120px;display:block}
 #lightbox{position:fixed;inset:0;background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center;z-index:90;cursor:zoom-out}
 #lightbox img{max-width:92vw;max-height:92vh;background:#fff}
+#preview{width:90vw;height:90vh;max-width:90vw;max-height:90vh;padding:0;border:0;border-radius:14px;background:var(--card);color:var(--text);box-shadow:0 20px 60px rgba(0,0,0,.5);overflow:hidden}
+#preview[open]{display:flex;flex-direction:column}
+#preview::backdrop{background:rgba(0,0,0,.6)}
+.preview-head{display:flex;align-items:center;gap:8px;padding:10px 14px;box-shadow:0 .5px 0 var(--sep);flex:none}
+.preview-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.preview-body{flex:1;min-height:0;display:flex;overflow:auto}
+.preview-frame{flex:1;width:100%;height:100%;border:0;color-scheme:light}
+[data-theme=dark] .preview-frame{color-scheme:dark}
+.preview-msg{margin:24px auto;color:var(--text2)}
 #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:95;display:flex;flex-direction:column;align-items:center;gap:6px}
 #toast div{background:rgba(30,30,36,.92);color:#fff;padding:8px 16px;border-radius:999px;font-weight:600;box-shadow:var(--shadow)}
 #toast div.bad{background:#b4001a}

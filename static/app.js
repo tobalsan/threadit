@@ -300,15 +300,20 @@
     Object.keys(blobCache).forEach(function (k) { blobCache[k].then(function (u) { URL.revokeObjectURL(u); }, function () {}); });
     blobCache = {};
     closeLightbox();
+    closePreview();
+  }
+  function fetchAttachment(a) {
+    return fetch(a.url, { headers: { Authorization: 'Bearer ' + getToken() } }).then(function (r) {
+      if (!r.ok) throw new ApiError(r.status, 'http_' + r.status, 'Could not load ' + a.filename);
+      return r.blob();
+    });
   }
   // <img> and <a> cannot send the bearer header, so fetch the file and use an object URL.
   function attachmentUrl(a) {
     if (!blobCache[a.id]) {
-      blobCache[a.id] = fetch(a.url, { headers: { Authorization: 'Bearer ' + getToken() } }).then(function (r) {
-        if (!r.ok) throw new ApiError(r.status, 'http_' + r.status, 'Could not load ' + a.filename);
-        return r.blob();
-      }).then(function (b) { return URL.createObjectURL(b); });
-      blobCache[a.id].catch(function () { delete blobCache[a.id]; });
+      var cache = blobCache;
+      cache[a.id] = fetchAttachment(a).then(function (b) { return URL.createObjectURL(b); });
+      cache[a.id].catch(function () { delete cache[a.id]; });
     }
     return blobCache[a.id];
   }
@@ -330,10 +335,76 @@
     document.addEventListener('keydown', lightboxKey);
     box.focus();
   }
+  var PREVIEW_MAX_BYTES = 2 * 1024 * 1024;
+  var MD_PREVIEW_CSS = ':root{color-scheme:light}body{font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:860px;margin:0 auto;padding:24px;color:#1f2328;background:#fff;word-wrap:break-word}'
+    + 'h1,h2{border-bottom:1px solid #d1d9e0;padding-bottom:.3em}h1,h2,h3,h4{margin:1.4em 0 .6em;line-height:1.25}a{color:#0969da}'
+    + 'code{font:85% ui-monospace,Menlo,monospace;background:#818b981f;padding:.2em .4em;border-radius:6px}pre{background:#f6f8fa;padding:14px;border-radius:6px;overflow:auto}pre code{background:none;padding:0;font-size:90%}'
+    + 'blockquote{margin:0;padding:0 1em;color:#59636e;border-left:.25em solid #d1d9e0}table{border-collapse:collapse;display:block;overflow:auto}th,td{border:1px solid #d1d9e0;padding:6px 13px}tr:nth-child(2n){background:#f6f8fa}'
+    + 'img{max-width:100%}hr{border:0;border-top:1px solid #d1d9e0}li.task-list-item,li:has(>input[type=checkbox]){list-style:none}li>input[type=checkbox]{margin:0 .4em 0 -1.4em}';
+  var MD_PREVIEW_DARK_CSS = ':root{color-scheme:dark}body{color:#f0f6fc;background:#0d1117}h1,h2,hr,th,td{border-color:#3d444d}a{color:#4493f8}pre,tr:nth-child(2n){background:#151b23}blockquote{color:#9198a1;border-color:#3d444d}';
+  function previewKind(a) {
+    var ct = (a.content_type || '').split(';')[0].trim().toLowerCase();
+    if (ct === 'text/markdown' || ct === 'text/x-markdown') return 'markdown';
+    if (ct === 'text/html') return 'html';
+    if (ct === 'text/plain' || ct === 'application/octet-stream') {
+      var ext = (a.filename.match(/\.([^.]+)$/) || [])[1];
+      ext = ext ? ext.toLowerCase() : '';
+      if (ext === 'md' || ext === 'markdown') return 'markdown';
+      if (ext === 'html' || ext === 'htm') return 'html';
+    }
+    return null;
+  }
+  function downloadAttachment(a) {
+    return attachmentUrl(a).then(function (u) {
+      var dl = el('a', { href: u, download: a.filename }); document.body.appendChild(dl); dl.click(); dl.remove();
+    }).catch(function (e) { toast(e.message, true); });
+  }
+  var previewOpener = null;
+  function closePreview() {
+    var box = document.getElementById('preview');
+    if (!box) return;
+    box.remove();
+    if (previewOpener && document.contains(previewOpener)) previewOpener.focus();
+    previewOpener = null;
+  }
+  // Markdown and HTML render in a script-less sandboxed srcdoc iframe; the file never enters the app document.
+  function openPreview(a, kind, opener) {
+    closePreview();
+    previewOpener = opener;
+    var body = el('div', { class: 'preview-body' });
+    var dlBtn = el('button', { type: 'button', class: 'small', text: 'Download', onclick: function () { downloadAttachment(a); } });
+    var dlg = el('dialog', { id: 'preview', 'aria-label': 'Preview: ' + a.filename },
+      el('div', { class: 'preview-head' }, el('strong', { class: 'preview-name', text: a.filename }), dlBtn,
+        el('button', { type: 'button', class: 'small preview-close', 'aria-label': 'Close preview', text: 'Close', onclick: closePreview })),
+      body);
+    dlg.addEventListener('cancel', function (ev) { ev.preventDefault(); closePreview(); });
+    dlg.addEventListener('click', function (ev) { if (ev.target === dlg) closePreview(); });
+    dlg.addEventListener('keydown', function (ev) { ev.stopPropagation(); });
+    document.body.appendChild(dlg);
+    dlg.showModal();
+    if (a.size > PREVIEW_MAX_BYTES) { body.appendChild(el('p', { class: 'preview-msg', text: 'Too large to preview.' })); return; }
+    body.appendChild(el('p', { class: 'preview-msg', text: 'Loading…' }));
+    fetchAttachment(a).then(function (blob) { return blob.text(); }).then(function (text) {
+      if (!document.body.contains(dlg)) return;
+      var doc = text, sandbox = '';
+      if (kind === 'markdown') {
+        sandbox = 'allow-popups allow-popups-to-escape-sandbox';
+        var dark = document.documentElement.getAttribute('data-theme') === 'dark';
+        doc = '<!doctype html><html><head><meta charset="utf-8"><base target="_blank"><style>'
+          + MD_PREVIEW_CSS + (dark ? MD_PREVIEW_DARK_CSS : '') + '</style></head><body>'
+          + window.marked.parse(text, { gfm: true }) + '</body></html>';
+      }
+      var frame = el('iframe', { class: 'preview-frame', title: 'Preview of ' + a.filename, sandbox: sandbox });
+      frame.srcdoc = doc;
+      body.textContent = '';
+      body.appendChild(frame);
+    }).catch(function (e) { body.textContent = ''; body.appendChild(el('p', { class: 'preview-msg', text: e.message || 'Could not render preview.' })); });
+  }
   function attachmentsNode(m) {
     if (!m.attachments || !m.attachments.length) return null;
     var box = el('div', { class: 'attachments' });
     m.attachments.forEach(function (a) {
+      var kind = previewKind(a);
       if (INLINE_IMAGES.indexOf(a.content_type) >= 0) {
         var img = el('img', { class: 'thumb', alt: a.filename });
         var btn = el('button', { type: 'button', class: 'thumbbtn', 'aria-label': 'Open image ' + a.filename, title: a.filename }, img);
@@ -342,12 +413,14 @@
           btn.addEventListener('click', function () { openLightbox(u, a.filename, btn); });
         }).catch(function () { btn.textContent = a.filename + ' (failed to load)'; });
         box.appendChild(btn);
+      } else if (kind) {
+        var pv = el('button', { type: 'button', class: 'attfile attpreview', title: 'Preview ' + a.filename, 'aria-label': 'Preview ' + a.filename, text: '👁 ' + a.filename + ' (' + fmtSize(a.size) + ')' });
+        pv.addEventListener('click', function () { openPreview(a, kind, pv); });
+        box.appendChild(pv);
       } else {
         box.appendChild(el('a', { class: 'attfile', href: a.url, download: a.filename, text: a.filename + ' (' + fmtSize(a.size) + ')', onclick: function (ev) {
           ev.preventDefault();
-          attachmentUrl(a).then(function (u) {
-            var dl = el('a', { href: u, download: a.filename }); document.body.appendChild(dl); dl.click(); dl.remove();
-          }).catch(function (e) { toast(e.message, true); });
+          downloadAttachment(a);
         } }));
       }
     });
@@ -681,7 +754,7 @@
     closeInspector(false);
   });
   document.addEventListener('keydown', function (ev) {
-    if (ev.key === 'Escape' && !document.getElementById('lightbox')) closeInspector(true);
+    if (ev.key === 'Escape' && !document.getElementById('lightbox') && !document.querySelector('dialog[open]')) closeInspector(true);
   });
 
   // ---------- command palette ----------

@@ -250,6 +250,80 @@ def test_attachments_thumbnail_lightbox_and_download(server, browser):
         ctx.close()
 
 
+def test_document_attachment_previews(server, browser):
+    human, _ = seed_users(server)
+    area = call(server, "POST", "/api/areas", human, {"name": "Documents"})
+    thread = make_thread(server, human, area["id"], "Preview files")
+    ctx, page = open_page(browser, server, human)
+    try:
+        page.goto(f"{server}/#/thread/{thread['id']}")
+        page.get_by_role("button", name="Reply to thread").click()
+        form = page.locator("form.compose")
+        page.fill("#top-reply", "See documents")
+        markdown = (
+            b"# Release notes\n\n| Item | Status |\n| --- | --- |\n| Preview | Ready |\n\n"
+            b"- [x] Published\n- [ ] Reviewed\n\n~~Old~~\n\n```js\nconst ready = true;\n```\n\n"
+            b"https://example.com\n\n<details><summary>More</summary><p>Details</p></details>\n"
+        )
+        html = (
+            b"<!doctype html><style>h1 { color: rgb(20, 80, 150); }</style>"
+            b"<h1>Quarterly update</h1>"
+            b"<script>document.querySelector('h1').textContent = 'Script ran';</script>"
+        )
+        form.locator("input[type=file]").set_input_files([
+            {"name": "release.md", "mimeType": "text/markdown", "buffer": markdown},
+            {"name": "update.html", "mimeType": "text/html", "buffer": html},
+            {"name": "large.markdown", "mimeType": "application/octet-stream", "buffer": b" " * (2 * 1024**2 + 1)},
+        ])
+        form.get_by_role("button", name="Send", exact=True).click()
+
+        page.emulate_media(color_scheme="light")
+        page.get_by_role("radio", name="Dark", exact=True).click()
+        md_chip = page.get_by_role("button", name="Preview release.md")
+        md_chip.click()
+        pane = page.get_by_role("dialog")
+        expect(pane).to_be_visible()
+        md_frame = pane.frame_locator("iframe")
+        expect(md_frame.get_by_role("cell", name="Ready")).to_be_visible()
+        expect(md_frame.locator("body")).to_have_css("background-color", "rgb(13, 17, 23)")
+        tasks = md_frame.get_by_role("checkbox")
+        expect(tasks).to_have_count(2)
+        expect(tasks.first).to_be_checked()
+        expect(tasks.last).not_to_be_checked()
+        expect(md_frame.locator("del")).to_have_text("Old")
+        expect(md_frame.locator("pre code")).to_have_text("const ready = true;")
+        expect(md_frame.locator("base")).to_have_attribute("target", "_blank")
+        expect(md_frame.get_by_role("link", name="https://example.com")).to_be_visible()
+        expect(md_frame.locator("details summary")).to_have_text("More")
+        with page.expect_download() as download:
+            pane.get_by_role("button", name="Download", exact=True).click()
+        assert download.value.suggested_filename == "release.md"
+        page.keyboard.press("Escape")
+        expect(pane).not_to_be_visible()
+        expect(md_chip).to_be_focused()
+
+        html_chip = page.get_by_role("button", name=re.compile(r"update\.html"))
+        html_chip.click()
+        expect(pane).to_be_visible()
+        iframe = pane.locator("iframe")
+        expect(iframe).to_have_attribute("sandbox", re.compile(r"^(?!.*allow-(?:scripts|same-origin)).*$"))
+        heading = pane.frame_locator("iframe").get_by_role("heading", name="Quarterly update")
+        expect(heading).to_have_css("color", "rgb(20, 80, 150)")
+        assert iframe.evaluate("frame => frame.contentDocument === null")
+        page.mouse.click(2, 2)  # Backdrop click closes the pane.
+        expect(pane).not_to_be_visible()
+        expect(html_chip).to_be_focused()
+
+        page.get_by_role("button", name=re.compile(r"large\.markdown")).click()
+        expect(pane.get_by_text("Too large to preview", exact=False)).to_be_visible()
+        expect(pane.locator("iframe")).to_have_count(0)
+        expect(pane.get_by_role("button", name="Download", exact=True)).to_be_enabled()
+        pane.get_by_role("button", name="Close preview", exact=True).click()
+        expect(pane).not_to_be_visible()
+    finally:
+        ctx.close()
+
+
 def test_editing_and_modified_indicator(server, browser):
     human, agent = seed_users(server)
     area = call(server, "POST", "/api/areas", human, {"name": "Edits", "description": "d"})
