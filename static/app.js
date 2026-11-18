@@ -1581,7 +1581,7 @@
         el('span', { title: fmt(m.created_at), text: ago(m.created_at) }), modified(m),
         el('span', { class: 'msgid', text: '#' + m.id }),
         gone ? null : pending ? el('span', { class: 'need', title: 'reason: ' + attn.reason, text: 'Needs you' }) : null,
-        attn && !pending && !gone ? el('span', { class: 'mut', title: 'reason: ' + attn.reason, text: 'attention: ' + attn.status }) : null,
+        !ctx.hideAttentionStatus && attn && !pending && !gone ? el('span', { class: 'mut', title: 'reason: ' + attn.reason, text: 'attention: ' + attn.status }) : null,
         links ? el('a', { class: 'ctxlink', href: ctxHref(m), text: 'context' }) : null,
         gone ? null : el('div', { class: 'vwrap' }, el('span', { class: 'vscore', 'aria-hidden': 'true', title: 'Score', text: String(m.score) }), stepper)));
       if (gone) { body.appendChild(el('p', { class: 'deleted', text: 'message deleted' })); if (collapseSlot) body.appendChild(el('div', { class: 'foot' }, collapseSlot)); return; }
@@ -1741,7 +1741,7 @@
       root.areaId = t.area_id;
       root.escHref = prevHash !== null && /^(#\/?)?(\?.*)?$/.test(prevHash) ? prevHash || '#/' : '#/area/' + areaRef(t);
       root.pageTitle = t.title;
-      var ctx = { threadId: t.id, closed: !!t.closed, targetId: targetParam ? Number(targetParam) : null, added: function () { refresh(); }, onOpScore: function () { paintInspector(); } };
+      var ctx = { threadId: t.id, hideAttentionStatus: true, closed: !!t.closed, targetId: targetParam ? Number(targetParam) : null, added: function () { refresh(); }, onOpScore: function () { paintInspector(); } };
       ctx.collapse = replyCollapse(t.id, d.messages, ctx.targetId);
       var titleSlot = el('div');
       var isOwner = me.id === t.owner.id;

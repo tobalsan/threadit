@@ -86,6 +86,8 @@ def test_full_flow(server, browser):
         bob.get_by_role("menuitem", name="React 👀").click()
         expect(bob.get_by_text("attention: processing")).to_be_visible()
         bob.get_by_role("link", name="Pricing study").click()
+        expect(bob.locator(".msg.op").get_by_role("button", name="👀 1", exact=True)).to_be_visible()
+        expect(bob.locator(".msg.op .head")).not_to_contain_text("attention:")
         # Reply on the OP opens the thread composer: the answer is a top-level reply
         bob.get_by_role("button", name="Reply", exact=True).first.click()
         bob.locator("#top-reply").fill("Found three vendors")

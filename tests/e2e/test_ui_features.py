@@ -1933,7 +1933,7 @@ def test_attention_load_more_after_agent_leaves_and_reenters_filter(server, brow
 
 
 def test_attention_mark_one_removes_or_keeps_by_filter(server, browser):
-    human, _, _ = seed_attention(server, 2)
+    human, _, thread = seed_attention(server, 2)
     ctx, page = open_page(browser, server, human)
     try:
         page.goto(f"{server}/#/attention")
@@ -1948,6 +1948,9 @@ def test_attention_mark_one_removes_or_keeps_by_filter(server, browser):
         expect(page.get_by_role("button", name="Mark as seen")).to_have_count(0)
         expect(page.get_by_text("attention: acknowledged")).to_have_count(2)
         expect(nav_link.locator(".navcount")).to_have_count(0)
+        page.goto(f"{server}/#/thread/{thread['id']}")
+        expect(page.get_by_role("button", name="✅ 1", exact=True)).to_have_count(2)
+        expect(page.locator(".msgbody .head").filter(has_text="attention:")).to_have_count(0)
     finally:
         ctx.close()
 
