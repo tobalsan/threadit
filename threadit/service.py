@@ -37,6 +37,16 @@ def get_message_row(conn: sqlite3.Connection, message_id: int) -> sqlite3.Row:
     return row
 
 
+def purge_leaf_message(conn: sqlite3.Connection, message_id: int) -> bool:
+    """Remove the message and its dependent rows, or return false if it has replies."""
+    if conn.execute("SELECT 1 FROM messages WHERE parent_id = ? LIMIT 1", (message_id,)).fetchone():
+        return False
+    for table in ("reactions", "votes", "attention", "agent_activities", "events", "attachments"):
+        conn.execute(f"DELETE FROM {table} WHERE message_id = ?", (message_id,))
+    conn.execute("DELETE FROM messages WHERE id = ?", (message_id,))
+    return True
+
+
 def require_open(thread: sqlite3.Row) -> None:
     if thread["closed_reason"]:
         raise ApiError(

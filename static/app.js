@@ -1712,9 +1712,18 @@
             el('button', { type: 'button', role: 'menuitem', class: 'del', text: 'Delete', onclick: function () { closePop(false); deleteMsg(btn); } })));
         } }));
         function deleteMsg(btn) {
-          confirmDialog('Delete message?', 'The card stays and shows "message deleted". You cannot undo this.', 'Cancel', 'Delete', 'danger').then(function (ok) {
+          var deleteHash = location.hash;
+          var consequence = me.is_superadmin && !m.is_op
+            ? 'The message will be permanently removed.'
+            : 'The card stays and shows "message deleted". You cannot undo this.';
+          confirmDialog('Delete message?', consequence, 'Cancel', 'Delete', 'danger').then(function (ok) {
             if (!ok) return;
-            act(btn, function () { return api('DELETE', '/api/messages/' + m.id).then(function (nm) { m.deleted_at = nm.deleted_at; m.body = ''; m.attachments = []; editing = false; draft = null; clear(replySlot); paint(); changed(); }); });
+            act(btn, function () {
+              return api('DELETE', '/api/messages/' + m.id).then(function (nm) {
+                if (nm.deleted) { if (deleteHash === location.hash) refresh(); return; }
+                m.deleted_at = nm.deleted_at; m.body = ''; m.attachments = []; editing = false; draft = null; clear(replySlot); paint(); changed();
+              });
+            });
           });
         }
         foot.appendChild(hov);
