@@ -38,24 +38,53 @@ def test_non_author_and_closed_thread(admin, alice, bob, bot, area):
     assert delete(alice, 9999).status_code == 404
 
 
-def test_superadmin_deletes_any_message(admin, alice, bot, area):
+def test_superadmin_removes_leaf_and_its_references(board, admin, alice, bot, area):
     thread = alice.make_thread(area["id"])
     tid = thread["thread"]["id"]
-    messages = [thread["messages"][0], alice.say(tid, "human reply"), bot.say(tid, "agent reply")]
-    activity_before = admin.ok("GET", "/api/activity")
-    for message in messages:
-        first = delete(admin, message["id"])
-        assert first.status_code == 200
-        deleted = first.json()
-        assert deleted["deleted_at"]
-        assert deleted["body"] == ""
-        assert deleted["author"] == message["author"]
-        again = delete(admin, message["id"])
-        assert again.status_code == 200 and again.json() == deleted
-        assert alice.ok("GET", f"/api/messages/{message['id']}")["deleted_at"] == deleted["deleted_at"]
-    assert admin.ok("GET", "/api/activity") == activity_before
-    assert bot.attention() == {}
-    assert alice.attention() == {}
+    op_id = thread["thread"]["op_message_id"]
+    attachment = upload(alice).json()
+    msg = alice.ok(
+        "POST",
+        f"/api/threads/{tid}/messages",
+        {"body": "zebra needle @botty", "attachment_ids": [attachment["id"]]},
+        201,
+    )
+    mid = msg["id"]
+    sibling = alice.say(tid, "keep this sibling")
+    admin.react(mid, "👍")
+    admin.ok("POST", f"/api/messages/{mid}/votes", {"delta": 1})
+    bot.ok("POST", f"/api/messages/{mid}/agent-activities", {"kind": "thought", "body": "Working"}, 201)
+
+    path = f"/api/messages/{mid}"
+    sibling_context = f"/api/messages/{sibling['id']}/context"
+    activity_before = admin.ok("GET", "/api/activity")["events"]
+    activity_time = admin.ok("GET", f"/api/threads/{tid}")["thread"]["last_activity_at"]
+    assert [m["id"] for m in alice.ok("GET", sibling_context)["top_level"]] == [op_id, mid, sibling["id"]]
+    assert [m["id"] for m in alice.ok("GET", "/api/search", params={"q": "zebra"})["messages"]] == [mid]
+    assert any(e["message_id"] == mid for e in activity_before)
+    assert mid in bot.attention()
+    assert admin.get(attachment["url"]).status_code == 200
+
+    assert admin.ok("DELETE", path) == {"id": mid, "deleted": True}
+    assert admin.get(path).status_code == 404
+    assert admin.get(f"{path}/context").status_code == 404
+    assert delete(admin, mid).status_code == 404
+    assert admin.get(attachment["url"]).status_code == 404
+    detail = admin.ok("GET", f"/api/threads/{tid}")
+    assert [m["id"] for m in detail["messages"]] == [op_id, sibling["id"]]
+    assert detail["thread"]["last_activity_at"] == activity_time
+    assert [m["id"] for m in alice.ok("GET", sibling_context)["top_level"]] == [op_id, sibling["id"]]
+    assert alice.ok("GET", "/api/search", params={"q": "zebra"})["messages"] == []
+    assert admin.ok("GET", "/api/activity")["events"] == [e for e in activity_before if e["message_id"] != mid]
+    assert mid not in bot.attention()
+
+    conn = sqlite3.connect(board.path)
+    try:
+        assert conn.execute("SELECT 1 FROM messages WHERE id = ?", (mid,)).fetchone() is None
+        for table in ("reactions", "votes", "attention", "agent_activities", "events", "attachments"):
+            assert conn.execute(f"SELECT 1 FROM {table} WHERE message_id = ?", (mid,)).fetchone() is None
+    finally:
+        conn.close()
 
 
 def test_superadmin_respects_deleted_and_closed_messages(admin, alice, bob, area):
@@ -75,6 +104,28 @@ def test_superadmin_respects_deleted_and_closed_messages(admin, alice, bob, area
                 assert blocked.status_code == 409
                 assert blocked.json()["error"]["code"] == "thread_closed"
     assert alice.ok("GET", f"/api/messages/{live['id']}")["deleted_at"] is None
+
+
+def test_superadmin_must_remove_replies_before_parent(admin, alice, bob, area):
+    tid = alice.make_thread(area["id"])["thread"]["id"]
+    parent = alice.say(tid, "parent")
+    child = bob.say(tid, "child", parent["id"])
+    activity = admin.ok("GET", "/api/activity")
+
+    blocked = delete(admin, parent["id"])
+    assert blocked.status_code == 409 and blocked.json()["error"]["code"] == "has_replies"
+    assert admin.ok("GET", f"/api/messages/{parent['id']}")["body"] == "parent"
+    assert admin.ok("GET", f"/api/messages/{child['id']}")["body"] == "child"
+    assert admin.ok("GET", "/api/activity") == activity
+
+    assert delete(bob, child["id"]).json()["deleted_at"]
+    still_blocked = delete(admin, parent["id"])
+    assert still_blocked.status_code == 409
+    assert still_blocked.json()["error"]["code"] == "has_replies"
+    assert delete(admin, child["id"]).json() == {"id": child["id"], "deleted": True}
+    assert delete(admin, parent["id"]).json() == {"id": parent["id"], "deleted": True}
+    for message in (parent, child):
+        assert admin.get(f"/api/messages/{message['id']}").status_code == 404
 
 
 def test_op_delete_keeps_thread_and_title(alice, area):
@@ -184,8 +235,11 @@ def test_delete_is_not_activity(board, alice, area):
 
 
 def test_reply_to_deleted_op_is_top_level(admin, alice, area):
-    d = admin.make_thread(area["id"], "t", "op")
+    d = alice.make_thread(area["id"], "t", "op")
     tid, op = d["thread"]["id"], d["messages"][0]["id"]
-    admin.ok("DELETE", f"/api/messages/{op}")
+    deleted = admin.ok("DELETE", f"/api/messages/{op}")
+    assert deleted["deleted_at"] and deleted["body"] == ""
+    assert admin.ok("DELETE", f"/api/messages/{op}") == deleted
+    assert admin.ok("GET", f"/api/threads/{tid}")["messages"] == [deleted]
     reply = alice.say(tid, "still here", op)
     assert reply["parent_id"] is None

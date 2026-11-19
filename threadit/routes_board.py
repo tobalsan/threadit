@@ -32,6 +32,7 @@ from threadit.service import (
     get_message_row,
     get_thread_row,
     insert_message,
+    purge_leaf_message,
     require_not_deleted,
     require_open,
 )
@@ -325,6 +326,10 @@ def delete_message(message_id: int, request: Request):
         require_open(get_thread_row(conn, message["thread_id"]))
         if message["author_id"] != user["id"] and not user["is_superadmin"]:
             raise ApiError(403, "not_author", "Only the message author or superadmin can delete it.")
+        if user["is_superadmin"] and not message["is_op"]:
+            if not purge_leaf_message(conn, message_id):
+                raise ApiError(409, "has_replies", "Delete the replies before deleting this message.")
+            return {"id": message_id, "deleted": True}
         conn.execute(
             "UPDATE messages SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL",
             (now(), message_id),

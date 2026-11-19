@@ -4,7 +4,7 @@ import time
 
 import pytest
 from playwright.sync_api import expect
-from test_ui_integration import call, login, make_thread, seed_users
+from test_ui_integration import call, login, make_thread, seed_member, seed_users
 
 PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
@@ -385,14 +385,14 @@ def test_editing_and_modified_indicator(server, browser):
 
 def test_superadmin_moderates_other_authors_messages(server, browser):
     human, agent = seed_users(server)
-    member = call(server, "POST", "/api/register", body={"username": "alice", "account_type": "human"})
-    call(server, "POST", f"/api/admin/users/{member['id']}/approve", human)
+    member = seed_member(server, human)
     area = call(server, "POST", "/api/areas", human, {"name": "Moderation", "description": "d"})
-    thread = make_thread(server, member["token"], area["id"], "Moderated thread", "human OP")
-    call(server, "POST", f"/api/threads/{thread['id']}/messages", member["token"], {"body": "human reply"})
-    call(server, "POST", f"/api/threads/{thread['id']}/messages", agent, {"body": "agent reply"})
+    thread = make_thread(server, member, area["id"], "Moderated thread", "human OP")
+    path = f"/api/threads/{thread['id']}/messages"
+    human_reply = call(server, "POST", path, member, {"body": "human reply"})
+    agent_reply = call(server, "POST", path, agent, {"body": "agent reply"})
     ctx, page = open_page(browser, server, human)
-    mctx, mpage = open_page(browser, server, member["token"])
+    mctx, mpage = open_page(browser, server, member)
     actx, apage = open_page(browser, server, agent)
     try:
         url = f"{server}/#/thread/{thread['id']}"
@@ -404,8 +404,9 @@ def test_superadmin_moderates_other_authors_messages(server, browser):
         expect(apage.locator(".msgbody").filter(has_text="human OP").get_by_role("button", name="More actions")).to_have_count(0)
         page.goto(url)
         expect(page.get_by_role("button", name="More actions")).to_have_count(3)
-        for index, original in enumerate(("human OP", "human reply", "agent reply")):
-            card = page.locator(".msgbody").nth(index)
+        op_id = thread["op_message_id"]
+        for mid, original in ((op_id, "human OP"), (human_reply["id"], "human reply"), (agent_reply["id"], "agent reply")):
+            card = page.locator(f"#m{mid} > .msgbody")
             expect(card).to_contain_text(original)
             card.get_by_role("button", name="More actions").click()
             page.get_by_role("menuitem", name="Edit", exact=True).click()
@@ -418,15 +419,21 @@ def test_superadmin_moderates_other_authors_messages(server, browser):
             page.get_by_role("menuitem", name="Delete", exact=True).click()
             dialog = page.get_by_role("dialog")
             expect(dialog).to_contain_text("Delete message?")
+            expect(dialog).to_contain_text("The card stays" if mid == op_id else "permanently removed")
             dialog.get_by_role("button", name="Cancel", exact=True).click()
             expect(card.locator(".md")).to_have_text("corrected " + original)
             card.get_by_role("button", name="More actions").click()
             page.get_by_role("menuitem", name="Delete", exact=True).click()
             dialog.get_by_role("button", name="Delete", exact=True).click()
-            expect(card.get_by_text("message deleted")).to_be_visible()
-            expect(card.get_by_role("button", name="More actions")).to_have_count(0)
+            if mid == op_id:
+                expect(card.get_by_text("message deleted")).to_be_visible()
+                expect(card.get_by_role("button", name="More actions")).to_have_count(0)
+            else:
+                expect(card).to_have_count(0)
         page.reload()
-        expect(page.get_by_text("message deleted", exact=True)).to_have_count(3)
+        expect(page.get_by_text("message deleted", exact=True)).to_have_count(1)
+        for deleted in (human_reply, agent_reply):
+            expect(page.locator(f"#m{deleted['id']}")).to_have_count(0)
         expect(page.get_by_role("button", name="More actions")).to_have_count(0)
     finally:
         ctx.close()
@@ -1834,17 +1841,18 @@ def test_agent_reply_appears_live_and_keeps_reply_draft(server, browser):
 
 def test_delete_in_another_tab_shows_live_while_agent_works(server, browser):
     human, agent = seed_users(server)
+    member = seed_member(server, human)
     area = call(server, "POST", "/api/areas", human, {"name": "Sessions", "description": "d"})
     thread = make_thread(server, human, area["id"], "S", "hello @agentx")
     op = thread["op_message_id"]
-    mine = call(server, "POST", f"/api/threads/{thread['id']}/messages", human, {"body": "soon gone"})
+    mine = call(server, "POST", f"/api/threads/{thread['id']}/messages", member, {"body": "soon gone"})
     call(server, "POST", f"/api/messages/{op}/reactions", agent, {"emoji": "👀"})
     ctx, page = open_page(browser, server, human)
     try:
         page.goto(f"{server}/#/thread/{thread['id']}")
         card = page.locator(f"#m{mine['id']}")
         expect(card).to_contain_text("soon gone")
-        call(server, "DELETE", f"/api/messages/{mine['id']}", human)
+        call(server, "DELETE", f"/api/messages/{mine['id']}", member)
         expect(card).to_contain_text("message deleted", timeout=8000)
         expect(card).not_to_contain_text("soon gone")
         expect(card.get_by_role("button", name="More actions")).to_have_count(0)

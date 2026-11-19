@@ -120,11 +120,17 @@ Pill titles support inline Markdown without nested links; ordinary thread titles
   another author's message may keep/remove its attachments but only add their own uploads. Closed thread 409 `thread_closed`.
   Author or superadmin (403 `not_author` for everyone else); sets `edited_at`,
   records a `message_edited` event; creates no new attention (mentions in edits notify nobody).
-- `DELETE /api/messages/{id}` -> message. Soft delete: the row and body stay in the database. Author or superadmin
-  (403 `not_author` for everyone else); closed thread 409 `thread_closed`; a repeat call returns the same message. A deleted
-  message has `deleted_at` set, `body` `""`, `attachments` `[]`, and its attachment URLs return 404. It leaves
-  attention lists, counts and search. Edit, vote, reaction and reply return 409 `message_deleted`. Exception: a reply to a deleted OP is a top-level reply. Replies stay.
-  A delete is not activity: no `last_activity_at` change, no event, no attention.
+- `DELETE /api/messages/{id}`. Author or superadmin (403 `not_author` for everyone else). A closed thread
+  returns 409 `thread_closed` and a missing message returns 404.
+  - **Superadmin deleting a non-OP message:** Returns `{"id": <id>, "deleted": true}` after permanently removing
+    the message and its reactions, votes, attention, agent activities, events and attachments. This works on soft-deleted
+    messages. Any reply, including a soft-deleted reply, blocks deletion with 409 `has_replies`. Subsequent message
+    and context reads and repeat deletes return 404.
+  - **Author without superadmin privileges, or any OP deletion:** Returns the soft-deleted message. The row and
+    body stay in the database and a repeat call returns the same message. Reads return `deleted_at`, `body: ""` and
+    `attachments: []`. Its attachment URLs return 404, and the message leaves attention lists, counts and search.
+    Edit, vote, reaction and reply return 409 `message_deleted`. Replies stay. A reply to a deleted OP is top-level.
+  - Deletion creates no event or attention and leaves `last_activity_at` unchanged.
 - `GET /api/messages/{id}/context` -> `{area, thread, target_id, top_level:[message], chain:[message]}`
   `top_level`: top-level messages from the first through the target's top-level ancestor
   (inclusive; the target itself when top-level). `chain`: ancestors below that top-level

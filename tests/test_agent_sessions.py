@@ -197,14 +197,14 @@ def test_retry_permissions_and_guard_order(admin, bot, bot2, item):
 
 
 @pytest.mark.parametrize("deleted_child", [False, True])
-def test_retry_keeps_deleted_card_when_failure_reply_has_children(admin, bot, item, deleted_child):
+def test_retry_keeps_deleted_card_when_failure_reply_has_children(admin, alice, bot, item, deleted_child):
     tid, mid = item
     bot.react(mid, "👀")
     activity(bot, mid, "error", "Run failed")
     reply = bot.say(tid, "I could not finish this request.")
-    child = admin.say(tid, "Please try again", reply["id"])
+    child = alice.say(tid, "Please try again", reply["id"])
     if deleted_child:
-        admin.ok("DELETE", f"/api/messages/{child['id']}")
+        alice.ok("DELETE", f"/api/messages/{child['id']}")
 
     s = admin.ok("POST", f"/api/messages/{mid}/agent-sessions/botty/retry")
 

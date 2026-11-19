@@ -78,10 +78,10 @@ def test_only_references_at_specified_boundaries_resolve(admin, area, body, exis
     assert list(refs) == ([str(target)] if exists else [])
 
 
-def test_references_stay_current_on_every_message_response(admin, alice, area):
+def test_references_stay_current_on_every_message_response(admin, alice, bob, area):
     target = alice.make_thread(area["id"], title="Old runner")["thread"]["id"]
     source = admin.make_thread(area["id"])["thread"]["id"]
-    posted = admin.say(source, f"See #{target}")
+    posted = bob.say(source, f"See #{target}")
     mid = posted["id"]
     assert posted["linked_threads"][str(target)]["title"] == "Old runner"
     assert alice.attention() == {}
@@ -103,7 +103,7 @@ def test_references_stay_current_on_every_message_response(admin, alice, area):
             }
         }
     assert alice.attention() == {}
-    deleted = admin.ok("DELETE", f"/api/messages/{mid}")
+    deleted = bob.ok("DELETE", f"/api/messages/{mid}")
     assert deleted["linked_threads"] == {}
 
 

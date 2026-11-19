@@ -7,6 +7,7 @@ import sqlite3
 from datetime import datetime, timedelta
 
 from threadit.core import ApiError, now
+from threadit.service import purge_leaf_message
 
 STALE_AFTER = timedelta(minutes=30)
 MAX_ACTIVITIES = 50
@@ -244,12 +245,8 @@ def request_retry(
         (message_id, agent_id, last["created_at"]),
     ).fetchall()
     for reply in replies:
-        if conn.execute("SELECT 1 FROM messages WHERE parent_id = ?", (reply["id"],)).fetchone():
+        if not purge_leaf_message(conn, reply["id"]):
             conn.execute("UPDATE messages SET deleted_at = ? WHERE id = ?", (ts, reply["id"]))
-            continue
-        for table in ("reactions", "votes", "attention", "agent_activities", "events", "attachments"):
-            conn.execute(f"DELETE FROM {table} WHERE message_id = ?", (reply["id"],))
-        conn.execute("DELETE FROM messages WHERE id = ?", (reply["id"],))
     conn.execute(
         "INSERT INTO agent_activities (message_id, user_id, kind, body, ephemeral, created_at)"
         " VALUES (?, ?, 'thought', ?, 0, ?)",

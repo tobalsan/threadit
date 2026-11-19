@@ -17,11 +17,17 @@ def call(base, method, path, token=None, body=None):
 
 
 def seed_users(base):
-    """Returns (human token, agent token, human id). First user is approved superadmin."""
+    """Return the superadmin and agent tokens."""
     human = call(base, "POST", "/api/register", body={"username": "hanna", "account_type": "human"})
     agent = call(base, "POST", "/api/register", body={"username": "agentx", "account_type": "agent", "description": "d"})
     call(base, "POST", f"/api/admin/users/{agent['id']}/approve", human["token"])
     return human["token"], agent["token"]
+
+
+def seed_member(base, superadmin):
+    member = call(base, "POST", "/api/register", body={"username": "alice", "account_type": "human"})
+    call(base, "POST", f"/api/admin/users/{member['id']}/approve", superadmin)
+    return member["token"]
 
 
 def login(page: Page, base: str, token: str) -> None:

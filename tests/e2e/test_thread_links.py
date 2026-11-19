@@ -3,7 +3,7 @@ import sqlite3
 
 from playwright.sync_api import expect
 from test_ui_features import open_page
-from test_ui_integration import call, make_thread, seed_users
+from test_ui_integration import call, make_thread, seed_member, seed_users
 
 
 def test_strikethrough_nests_inline_markdown_and_keeps_single_tilde(server, browser):
@@ -132,10 +132,11 @@ def test_home_recently_completed_limits_orders_and_links_full_list(server, brows
 
 def test_reply_collapse_counts_persists_opens_deep_links_and_survives_deletion(server, browser):
     human, agent = seed_users(server)
+    member = seed_member(server, human)
     area = call(server, "POST", "/api/areas", human, {"name": "Branches"})
     thread = make_thread(server, human, area["id"], "Tree")
     path = f"/api/threads/{thread['id']}/messages"
-    parent = call(server, "POST", path, human, {"body": "Parent branch"})
+    parent = call(server, "POST", path, member, {"body": "Parent branch"})
     child = call(server, "POST", path, agent, {"body": "Child branch", "parent_id": parent["id"]})
     grandchild = call(server, "POST", path, human, {"body": "Deep target", "parent_id": child["id"]})
     ctx, page = open_page(browser, server, human)
@@ -157,7 +158,7 @@ def test_reply_collapse_counts_persists_opens_deep_links_and_survives_deletion(s
         expect(page.get_by_text("Deep target", exact=True)).to_be_visible()
         page.reload()
         expect(page.get_by_text("Deep target", exact=True)).to_be_visible()
-        call(server, "DELETE", f"/api/messages/{parent['id']}", human)
+        call(server, "DELETE", f"/api/messages/{parent['id']}", member)
         page.reload()
         expect(page.get_by_text("message deleted", exact=True)).to_be_visible()
         page.get_by_role("button", name="Hide 2 replies", exact=True).click()
