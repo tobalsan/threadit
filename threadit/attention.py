@@ -27,9 +27,11 @@ def record_attention(
     author: sqlite3.Row,
     parent_author_id: int | None,
     body: str,
-) -> None:
+) -> bool:
+    """Return whether the message created any attention."""
     keys = mentioned_keys(body)
     ts = now()
+    created = False
     approved = conn.execute(
         "SELECT id, username_key FROM users WHERE status = 'approved'"
     ).fetchall()
@@ -47,6 +49,8 @@ def record_attention(
             " VALUES (?, ?, ?, 'unacknowledged', ?, ?)",
             (message_id, user["id"], reason, ts, ts),
         )
+        created = True
+    return created
 
 
 def acknowledge_human(conn: sqlite3.Connection, user: sqlite3.Row, message_id: int) -> None:

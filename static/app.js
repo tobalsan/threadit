@@ -150,6 +150,12 @@
   }
   function ctxHref(m) { return '#/context/' + m.id; }
   function areaRef(o) { return o.area_slug || o.slug || o.area_id || o.id; }
+  function areaPill(area, linked) {
+    var name = area.area_name || area.name;
+    if (!name) return null;
+    return el(linked ? 'a' : 'span', { class: 'area-pill', 'data-area-color': area.area_color || area.color,
+      href: linked ? '#/area/' + areaRef(area) : null, title: name }, el('span', { text: name }));
+  }
   function modified(o) {
     return o.edited_at ? el('span', { class: 'mut modified', title: 'Edited ' + fmt(o.edited_at), text: '(modified)' }) : null;
   }
@@ -513,7 +519,7 @@
       clear(pop);
       items.forEach(function (u, i) {
         var content = range.trigger === '#' ? [el('strong', { text: '#' + u.id }), ' ', renderInline(u.title, true), ' ',
-          el('span', { class: 'mut', text: u.area_name }), u.closed_reason ? el('span', { class: 'badge closed', text: 'Closed' }) : null] :
+          areaPill(u), u.closed_reason ? el('span', { class: 'badge closed', text: 'Closed' }) : null] :
           [el('strong', { text: '@' + u.username }), ' ', badge(u.account_type), ' ', el('span', { class: 'mut', text: (u.description || '').slice(0, 60) })];
         pop.appendChild(el('div', { class: 'mention-item' + (i === active ? ' active' : ''), role: 'option', 'aria-selected': i === active ? 'true' : 'false',
           onmousedown: function (ev) { ev.preventDefault(); choose(i); } }, content));
@@ -529,10 +535,11 @@
       ta.dispatchEvent(new Event('input', { bubbles: true }));
     }
     function normalize(t, area) {
-      return { id: t.id, title: t.title, area_name: t.area_name || (area && area.name), closed_reason: t.closed_reason || (t.closed && t.closed.reason) };
+      return { id: t.id, title: t.title, area_name: t.area_name || (area && area.name),
+        area_color: t.area_color || (area && area.color), closed_reason: t.closed_reason || (t.closed && t.closed.reason) };
     }
     function threads(query) {
-      if (!query) return api('GET', '/api/threads?state=all&sort=activity&limit=8').then(function (r) {
+      if (!query) return api('GET', '/api/threads?state=all&sort=activity&parked=include&limit=8').then(function (r) {
         return r.pinned.concat(r.threads).sort(function (a, b) { return b.last_activity_at.localeCompare(a.last_activity_at) || b.id - a.id; })
           .slice(0, 8).map(function (t) { return normalize(t); });
       });
@@ -720,14 +727,18 @@
   function setToolbar(title) { document.getElementById('bartitle').textContent = title; }
 
   // ---------- inspector ----------
-  // A thread view gives build(panel); the panel stays closed until the toolbar button opens it.
-  var inspBuild = null, inspOpen = false;
+  // Views give build(panel). Area info starts closed on arrival, while threads remember their setting.
+  var inspBuild = null, inspKind = 'thread', inspOpen = { thread: false, area: false };
+  function inspectorAction() { return inspKind === 'area' ? 'Toggle area info' : 'Toggle inspector'; }
   function paintInspector() {
     var panel = document.getElementById('insp');
     var btn = document.getElementById('inspbtn');
-    var open = inspOpen && !!inspBuild;
+    var open = inspOpen[inspKind] && !!inspBuild;
     btn.hidden = !inspBuild;
+    btn.title = inspectorAction();
+    btn.setAttribute('aria-label', btn.title);
     btn.setAttribute('aria-pressed', String(open));
+    panel.setAttribute('aria-label', inspKind === 'area' ? 'Area info' : 'Thread inspector');
     panel.hidden = !open;
     if (!open) return;
     var focused = document.activeElement && panel.contains(document.activeElement) ? document.activeElement.getAttribute('aria-label') : null;
@@ -738,18 +749,18 @@
       if (again) again.focus();
     }
   }
-  function setInspector(build) { inspBuild = build; paintInspector(); }
-  function toggleInspector() { if (!inspBuild) return; inspOpen = !inspOpen; paintInspector(); }
+  function setInspector(build, kind) { inspBuild = build; inspKind = kind || 'thread'; paintInspector(); }
+  function toggleInspector() { if (!inspBuild) return; inspOpen[inspKind] = !inspOpen[inspKind]; paintInspector(); }
   function closeInspector(refocus) {
-    if (!inspOpen) return;
+    if (!inspBuild || !inspOpen[inspKind]) return;
     var panel = document.getElementById('insp');
     var inside = panel.contains(document.activeElement);
-    inspOpen = false; paintInspector();
+    toggleInspector();
     if (refocus && inside) document.getElementById('inspbtn').focus();
   }
   document.getElementById('inspbtn').addEventListener('click', toggleInspector);
   document.addEventListener('mousedown', function (ev) {
-    if (!inspOpen || document.getElementById('insp').contains(ev.target) || document.getElementById('inspbtn').contains(ev.target)
+    if (!inspOpen[inspKind] || document.getElementById('insp').contains(ev.target) || document.getElementById('inspbtn').contains(ev.target)
       || ev.target.closest('.pop,.tapback,.scrim,.sheet,#lightbox,#toast,dialog')) return;
     closeInspector(false);
   });
@@ -777,7 +788,7 @@
     var dark = document.documentElement.getAttribute('data-theme') === 'dark';
     var out = [];
     out.push(['Create thread', function () { openNewThread(); }]);
-    if (inspBuild) out.push(['Toggle inspector', toggleInspector]);
+    if (inspBuild) out.push([inspectorAction(), toggleInspector]);
     out.push([dark ? 'Switch to light mode' : 'Switch to dark mode', function () { setTheme(dark ? 'light' : 'dark'); }]);
     out.push(['Use system appearance', function () { setTheme('system'); }]);
     return out;
@@ -906,10 +917,10 @@
 
   // ---------- new thread sheet ----------
   var LAST_AREA_KEY = 'threadit:lastarea';
-  var AREA_COLORS = ['orange', 'blue', 'green', 'purple'];
+  var AREA_COLORS = ['blue', 'purple', 'pink', 'orange', 'green', 'teal', 'indigo', 'brown', 'coral', 'gray'];
   var currentAreaId = null;
   var sheet = null;
-  function areaTile(a) { return el('span', { class: 'tile c-' + AREA_COLORS[a.id % AREA_COLORS.length], 'aria-hidden': 'true', text: a.name.charAt(0).toUpperCase() }); }
+  function areaTile(a) { return el('span', { class: 'tile', 'data-area-color': a.color, 'aria-hidden': 'true', text: a.name.charAt(0).toUpperCase() }); }
   function firstLine(text) { return String(text || '').split('\n')[0].replace(/[*`_#>]/g, '').trim(); }
   function lastAreaId() {
     try { return Number(localStorage.getItem(LAST_AREA_KEY + ':' + me.id)) || null; } catch (e) { return null; }
@@ -1067,7 +1078,7 @@
   // Esc on a thread returns to its area, except while typing or when an overlay or the inspector is open.
   // Capture phase: this must see the inspector state before its own Esc handler closes it.
   document.addEventListener('keydown', function (ev) {
-    if (ev.key !== 'Escape' || ev.metaKey || ev.ctrlKey || ev.altKey || !me || sheet || palette || inspOpen) return;
+    if (ev.key !== 'Escape' || ev.metaKey || ev.ctrlKey || ev.altKey || !me || sheet || palette || (inspBuild && inspOpen[inspKind])) return;
     var t = ev.target;
     if (t.closest && t.closest('input,textarea,select,[contenteditable],form,dialog,#lightbox,.pop,.tapback')) return;
     if (document.querySelector('dialog[open],#lightbox,.pop,.tapback')) return;
@@ -1158,7 +1169,12 @@
     var qi = h.indexOf('?'); if (qi >= 0) { q = h.slice(qi + 1); h = h.slice(0, qi); }
     var params = new URLSearchParams(q);
     var parts = h.split('/').filter(Boolean);
-    if (!soft) { setToolbar(PAGE_TITLES[parts[0] || ''] || 'Threadit'); setInspector(null); }
+    var inspectorKind = parts[0] === 'area' ? 'area' : 'thread';
+    if (!soft) {
+      if (inspectorKind === 'area') inspOpen.area = false;
+      setToolbar(PAGE_TITLES[parts[0] || ''] || 'Threadit');
+      setInspector(null, inspectorKind);
+    }
     currentAreaId = null;
     refreshAttentionCount();
     var fn;
@@ -1184,7 +1200,7 @@
         if (node && node.pageTitle) setToolbar(node.pageTitle);
         if (node && node.areaId) currentAreaId = node.areaId;
         if (node && node.afterShown) node.afterShown();
-        setInspector(node && node.inspector ? node.inspector : null);
+        setInspector(node && node.inspector ? node.inspector : null, inspectorKind);
         if (soft) { sc.scrollTo({ top: top, behavior: 'instant' }); return; }
         var tgt = main.querySelector('.target');
         if (tgt) tgt.scrollIntoView({ block: 'center' }); else { document.getElementById('scroll').scrollTop = 0; if (!palette) main.focus({ preventScroll: true }); }
@@ -1203,34 +1219,68 @@
     var name = el('input', { type: 'text', required: true, maxlength: 80, value: area ? area.name : '' });
     var desc = el('textarea', { maxlength: 10000 }); desc.value = area ? area.description : '';
     var err = el('div');
-    var guarded = guardedCancel(function () { return name.value !== (area ? area.name : '') || desc.value !== (area ? area.description : ''); }, cancel);
-    var f = el('form', { class: 'card' }, el('h2', { text: area ? 'Edit area' : 'New area' }),
-      field('Name', name, 'area-name'), field('Description / instructions for this area', desc, 'area-desc'), err,
+    var selected = area ? area.color : null;
+    var colorField = null;
+    if (area) {
+      var preview = el('span');
+      function paintPreview() { preview.replaceChildren(areaPill({ name: name.value.trim() || area.name, color: selected })); }
+      var swatches = AREA_COLORS.map(function (color) {
+        var label = color[0].toUpperCase() + color.slice(1);
+        return el('input', { type: 'radio', name: 'area-color', value: color, class: 'area-swatch',
+          'data-area-color': color, 'aria-label': label, title: label, checked: color === selected,
+          'aria-checked': String(color === selected) });
+      });
+      var group = el('div', { class: 'area-swatches', role: 'radiogroup', 'aria-labelledby': 'area-color-label',
+        onchange: function (ev) {
+          selected = ev.target.value;
+          swatches.forEach(function (swatch) { swatch.setAttribute('aria-checked', String(swatch.checked)); });
+          paintPreview();
+        } }, swatches);
+      colorField = el('div', { class: 'field' }, el('span', { id: 'area-color-label', text: 'Color' }), group,
+        el('div', { class: 'row mut' }, 'Preview', preview));
+      name.addEventListener('input', paintPreview);
+      paintPreview();
+    }
+    var guarded = guardedCancel(function () {
+      return name.value !== (area ? area.name : '') || desc.value !== (area ? area.description : '') || (area && selected !== area.color);
+    }, cancel);
+    var f = el('form', { class: area ? 'card edit-area' : 'card' }, el('h2', { text: area ? 'Edit area' : 'New area' }),
+      field('Name', name, 'area-name'), colorField, field('Description / instructions for this area', desc, 'area-desc'), err,
       el('div', { class: 'row2' }, el('button', { type: 'button', text: 'Cancel', onclick: guarded }),
         el('button', { type: 'submit', class: 'primary', text: 'Save' })));
     escCancels(f, guarded);
     formSubmit(f, err, function () {
       var body = { name: name.value.trim(), description: desc.value };
+      if (area) body.color = selected;
       return api(area ? 'PATCH' : 'POST', area ? '/api/areas/' + area.id : '/api/areas', body).then(done);
     });
     return f;
+  }
+  function parkedToggle(shown, count, toggle) {
+    return el('button', { type: 'button', role: 'switch', 'aria-checked': String(shown), 'aria-label': 'Show parked',
+      'aria-describedby': 'parked-count', class: 'gbtn parked-toggle', onclick: toggle },
+      el('span', { class: 'switch-track', 'aria-hidden': 'true' }), 'Show parked',
+      el('span', { id: 'parked-count', 'aria-label': count + ' parked threads', text: String(count) }));
   }
   function viewHome(params) {
     var recentPath = '/api/threads' + qs({ state: 'completed', sort: 'closed', closed_since: new Date(Date.now() - 7 * 86400000).toISOString(), limit: 5 });
     var recent = api('GET', recentPath).catch(function (e) { return { error: e }; });
     var HOME_PAGE = 20;
     var page = Math.max(1, parseInt(params.get('page'), 10) || 1);
-    return api('GET', '/api/threads' + qs({ sort: 'hot', state: 'active', limit: HOME_PAGE, offset: (page - 1) * HOME_PAGE })).then(function (r) {
+    var showParked = params.get('parked') === '1';
+    function homeHref(n, include) { return '#/' + qs({ page: n > 1 ? n : '', parked: include ? '1' : '' }); }
+    return api('GET', '/api/threads' + qs({ sort: 'hot', state: 'active', parked: showParked ? 'include' : '', limit: HOME_PAGE, offset: (page - 1) * HOME_PAGE })).then(function (r) {
       var root = el('div', { class: 'screen' });
       root.appendChild(el('h1', { text: 'Home' }));
       root.appendChild(el('p', { class: 'sub', text: 'Hot threads across all areas' }));
+      root.appendChild(el('div', { class: 'ctl' }, parkedToggle(showParked, r.parked_count, function () { location.hash = homeHref(1, !showParked); })));
       if (!r.threads.length) root.appendChild(el('div', { class: 'empty', text: 'No active threads yet.' }));
       var rows = el('div', { class: 'list' });
       r.threads.forEach(function (t) { rows.appendChild(threadRow(t)); });
       root.appendChild(rows);
       var nav = el('div', { class: 'pager' },
-        page > 1 ? el('a', { class: 'btn', href: '#/' + (page > 2 ? '?page=' + (page - 1) : ''), text: 'Previous' }) : null,
-        r.has_more ? el('a', { class: 'btn', href: '#/?page=' + (page + 1), text: 'Next' }) : null);
+        page > 1 ? el('a', { class: 'btn', href: homeHref(page - 1, showParked), text: 'Previous' }) : null,
+        r.has_more ? el('a', { class: 'btn', href: homeHref(page + 1, showParked), text: 'Next' }) : null);
       if (nav.firstChild) root.appendChild(nav);
       var completed = el('div'); root.appendChild(completed);
       function showCompleted(result) {
@@ -1274,9 +1324,9 @@
       if (!r.areas.length) root.appendChild(el('div', { class: 'empty', text: 'No areas yet. Create the first one.' }));
       var g = el('div', { class: 'areas' });
       r.areas.forEach(function (a) {
-        g.appendChild(el('div', { class: 'card' },
+        g.appendChild(el('div', { class: 'card area-card', 'data-area-color': a.color },
           el('a', { href: '#/area/' + areaRef(a), text: a.name, class: 't' }),
-          el('div', { class: 'mut', text: a.active_threads + ' active · ' + a.closed_threads + ' closed' }),
+          el('div', { class: 'mut', text: a.active_threads + ' active · ' + (a.parked_threads ? a.parked_threads + ' parked · ' : '') + a.closed_threads + ' closed' }),
           el('div', { class: 'mut', text: a.last_activity_at ? 'Last activity ' + fmt(a.last_activity_at) : 'No activity' }),
           el('p', { class: 'body mut', text: (a.description || '').slice(0, 160) })));
       });
@@ -1288,76 +1338,94 @@
   // ---------- area ----------
   // list score tint: >=5 red, 1-4 orange, 0 default, -1 to -4 faded, <= -5 nearly white
   function scoreClass(v) { return ('sc ' + (v >= 5 ? 'sc-hot' : v > 0 ? 'sc-warm' : v <= -5 ? 'sc-cold' : v < 0 ? 'sc-cool' : '')).trim(); }
-  // onVoted(): called after a quick vote changed t.importance (used to re-sort the list)
-  function threadRow(t, onVoted) {
+  function threadRow(t, options) {
+    options = options || {};
     var link = el('a', { class: 't', href: '#/thread/' + t.id }, renderInline(t.title, true));
     var score = el('output', { 'aria-live': 'polite', text: String(t.importance) });
     // quick +/-1 on the OP (importance = OP score); closed threads are read-only
     function vote(d) {
-      return t.closed ? null : el('button', { type: 'button', class: 'qv', 'aria-label': (d > 0 ? 'Upvote ' : 'Downvote ') + t.title, title: d > 0 ? '+1' : '-1', text: d > 0 ? '▲' : '▼', onclick: function (ev) {
+      return t.closed || t.parked_until ? null : el('button', { type: 'button', class: 'qv', 'aria-label': (d > 0 ? 'Upvote ' : 'Downvote ') + t.title, title: d > 0 ? '+1' : '-1', text: d > 0 ? '▲' : '▼', onclick: function (ev) {
         act(ev.currentTarget, function () {
           return api('POST', '/api/messages/' + t.op_message_id + '/votes', { delta: d }).then(function (r) {
             t.importance = r.score; score.textContent = String(r.score);
             imp.className = 'vote v imp ' + scoreClass(r.score);
             void imp.offsetWidth; imp.classList.add('spring');
-            if (onVoted) onVoted();
+            if (options.onVoted) options.onVoted();
           });
         });
       } });
     }
     var imp = el('div', { class: 'vote v imp ' + scoreClass(t.importance), role: 'group', 'aria-label': 'Importance (OP score)', title: 'Importance (OP score)' }, vote(1), score, vote(-1));
     var replies = Math.max(0, t.message_count - 1);
-    var row = el('article', { class: 'li thread' }, imp,
+    var row = el('article', { class: 'li thread' + (t.parked_until ? ' parked' : '') }, imp,
       el('div', { class: 'body' },
         el('h3', null, link, ' ', modified(t)),
         el('div', { class: 'meta' },
+          t.parked_until ? el('span', { class: 'park-chip', text: '☾ Parked until ' + parkDate(t.parked_until) }) : null,
           t.pinned ? el('span', { class: 'pin', text: 'Pinned' }) : null,
           t.closed ? el('span', { text: 'Closed · ' + t.closed.reason + ' by ' + t.closed.by + ' on ' + new Date(t.closed.at).toLocaleDateString(), title: fmt(t.closed.at) }) : null,
           t.pending_attention ? el('span', { class: 'need', text: 'Needs you · ' + t.pending_attention }) : null,
-          el('a', { href: '#/area/' + areaRef(t), text: t.area_name }),
+          options.hideArea ? null : areaPill(t, true),
           who(t.owner),
           el('span', { class: 'rc', 'aria-label': replies + (replies === 1 ? ' reply' : ' replies') }, svgIcon('M20 11.5a7.5 7 0 0 1-11 6.2L4 19l1.4-4A7.5 7 0 1 1 20 11.5z'), String(replies)),
-          el('span', { title: 'Last activity ' + fmt(t.last_activity_at), text: ago(t.last_activity_at) }))));
+          el('span', { title: 'Last activity ' + fmt(t.last_activity_at), text: ago(t.last_activity_at) }))),
+      t.closed ? null : t.parked_until ? unparkButton(t, 'gbtn row-park') : parkButton(t, 'gbtn row-park', '☾ Park'));
     row.thread = t;
     return row;
   }
   function viewArea(id, params) {
     var state = params.get('state') || 'active';
     var sort = params.get('sort') || 'importance';
+    var showParked = params.get('parked') === '1';
     var dated = sort === 'created' || sort === 'activity' || sort === 'closed';
     var order = dated && params.get('order') === 'asc' ? 'asc' : 'desc';
+    function fetchPage(area, offset) {
+      return api('GET', '/api/threads' + qs({ area_id: area.id, state: state, sort: sort, order: order,
+        parked: showParked ? 'include' : '', limit: PAGE, offset: offset }));
+    }
     return api('GET', '/api/areas/' + encodeURIComponent(id)).then(function (area) {
-      return api('GET', '/api/threads' + qs({ area_id: area.id, state: state, sort: sort, order: order, limit: PAGE })).then(function (list) { return [area, list]; });
+      return fetchPage(area).then(function (list) { return [area, list]; });
     }).then(function (rs) {
       var area = rs[0], list = rs[1];
-      var page = el('div', { class: 'with-side screen' });
-      var root = el('div', { class: 'main-col' });
+      var root = el('div', { class: 'screen' });
       var slot = el('div');
-      page.pageTitle = area.name;
-      page.areaId = area.id;
-      root.appendChild(el('div', { class: 'pagehead' }, el('h1', { text: area.name }),
-        el('button', { type: 'button', class: 'btn', text: 'Edit area', onclick: function () {
-          if (slot.firstChild && slot.dataset.k === 'e') { clear(slot); return; }
-          clear(slot); slot.dataset.k = 'e'; slot.appendChild(areaForm(area, function (a) {
-            var q = location.hash.indexOf('?'), next = '#/area/' + areaRef(a) + (q >= 0 ? location.hash.slice(q) : '');
-            if (location.hash === next) route(); else location.hash = next;
-          }, function () { clear(slot); }));
-        } })));
-      page.appendChild(root);
-      page.appendChild(el('aside', { class: 'side card', 'aria-label': 'Area description' }, el('h2', { text: 'About this area' }),
-        area.description ? renderMarkdown(area.description) : el('div', { class: 'body', text: '(none)' })));
+      root.pageTitle = area.name;
+      root.areaId = area.id;
+      root.appendChild(el('h1', { text: area.name }));
       root.appendChild(slot);
-      function go(s, o, d) { location.hash = '#/area/' + id + qs({ state: s, sort: o, order: d === 'asc' ? 'asc' : '' }); }
-      var sortSel = el('select', { onchange: function () { go(state, sortSel.value, order); } },
+      function editArea() {
+        closeInspector(false);
+        if (!slot.firstChild) slot.appendChild(areaForm(area, function (a) {
+          var q = location.hash.indexOf('?'), next = '#/area/' + areaRef(a) + (q >= 0 ? location.hash.slice(q) : '');
+          if (location.hash === next) refresh(); else location.hash = next;
+        }, function () { clear(slot); }));
+        slot.querySelector('input').focus();
+      }
+      root.inspector = function (panel) {
+        function count(label, value) { return el('div', { class: 'kv' }, label, el('b', { text: String(value) })); }
+        panel.append(
+          el('h3', { text: 'About this area' }),
+          el('div', { class: 'grp' }, area.description ? renderMarkdown(area.description) : el('p', { class: 'mut', text: '(none)' })),
+          el('h3', { text: 'Color' }),
+          el('div', { class: 'grp row' }, areaPill(area), el('span', { class: 'mut', text: 'change in Edit area' })),
+          el('h3', { text: 'Threads' }),
+          el('div', { class: 'grp' }, count('Active', area.active_threads), count('Parked', area.parked_threads),
+            count('Closed', area.closed_threads), count('Last activity', area.last_activity_at ? agoLong(area.last_activity_at) : 'No activity')),
+          el('h3', { text: 'Actions' }),
+          el('div', { class: 'stack' }, el('button', { type: 'button', class: 'gbtn', text: 'Edit area', onclick: editArea })));
+      };
+      function go(s, o, d, parked) { location.hash = '#/area/' + id + qs({ state: s, sort: o, order: d === 'asc' ? 'asc' : '', parked: parked ? '1' : '' }); }
+      var sortSel = el('select', { onchange: function () { go(state, sortSel.value, order, showParked); } },
         [['importance', 'Importance'], ['activity', 'Recent activity'], ['created', 'Created'], ['closed', 'Closed']].map(function (o) {
           return el('option', { value: o[0], text: o[1], selected: o[0] === sort }); }));
-      var orderSel = el('select', { id: 'ordersel', 'aria-label': 'Order', onchange: function () { go(state, sort, orderSel.value); } },
+      var orderSel = el('select', { id: 'ordersel', 'aria-label': 'Order', onchange: function () { go(state, sort, orderSel.value, showParked); } },
         [['desc', 'Newest first'], ['asc', 'Oldest first']].map(function (o) {
           return el('option', { value: o[0], text: o[1], selected: o[0] === order }); }));
-      var stateSel = el('select', { onchange: function () { go(stateSel.value, sort, order); } },
+      var stateSel = el('select', { onchange: function () { go(stateSel.value, sort, order, showParked); } },
         [['active', 'Active'], ['closed', 'Closed only'], ['completed', 'Completed'], ['archived', 'Archived'], ['all', 'Active + closed']].map(function (o) {
           return el('option', { value: o[0], text: o[1], selected: o[0] === state }); }));
-      root.appendChild(el('div', { class: 'ctl' }, el('label', { for: 'sortsel', text: 'Sort' }), sortSel, dated ? orderSel : null, el('label', { for: 'statesel', text: 'Show' }), stateSel));
+      root.appendChild(el('div', { class: 'ctl' }, el('label', { for: 'sortsel', text: 'Sort' }), sortSel, dated ? orderSel : null, el('label', { for: 'statesel', text: 'Show' }), stateSel,
+        parkedToggle(showParked, list.parked_count, function () { go(state, sort, order, !showParked); })));
       sortSel.id = 'sortsel'; stateSel.id = 'statesel';
       // importance sort: re-order loaded rows 2s after the last quick vote (debounced), mirroring server order
       // (score, then last activity, then created, newest first)
@@ -1367,29 +1435,31 @@
         [pinnedRows, rows].forEach(function (box) {
           Array.prototype.slice.call(box.children).sort(function (x, y) {
             var a = x.thread, b = y.thread;
-            return (b.importance - a.importance) || cmp(b.last_activity_at, a.last_activity_at) || cmp(b.created_at, a.created_at) || (b.id - a.id);
+            return cmp(!!a.parked_until, !!b.parked_until) || (b.importance - a.importance) ||
+              cmp(b.last_activity_at, a.last_activity_at) || cmp(b.created_at, a.created_at) || (b.id - a.id);
           }).forEach(function (n) { box.appendChild(n); });
         });
       }
       function voted() { if (sort !== 'importance') return; clearTimeout(resortTimer); resortTimer = setTimeout(resort, RESORT_DELAY_MS); }
+      var rowOptions = { hideArea: true, onVoted: voted };
       var pinnedRows = el('div', { class: 'list' });
-      if (list.pinned.length) { root.appendChild(el('h2', { class: 'seclabel', text: 'Pinned' })); root.appendChild(pinnedRows); list.pinned.forEach(function (t) { pinnedRows.appendChild(threadRow(t, voted)); }); }
+      if (list.pinned.length) { root.appendChild(el('h2', { class: 'seclabel', text: 'Pinned' })); root.appendChild(pinnedRows); list.pinned.forEach(function (t) { pinnedRows.appendChild(threadRow(t, rowOptions)); }); }
       root.appendChild(el('h2', { class: 'seclabel', text: state === 'closed' ? 'Closed threads' : 'Threads' }));
       if (!list.threads.length && !list.pinned.length) root.appendChild(el('div', { class: 'empty', text: 'No threads here.' }));
       var rows = el('div', { class: 'list' }); var more = el('div', { class: 'pager' }); var offset = 0;
       root.appendChild(rows); root.appendChild(more);
       function showPage(page) {
-        page.threads.forEach(function (t) { rows.appendChild(threadRow(t, voted)); });
+        page.threads.forEach(function (t) { rows.appendChild(threadRow(t, rowOptions)); });
         offset += page.threads.length;
         clear(more);
         if (page.has_more) more.appendChild(el('button', { type: 'button', class: 'btn', text: 'Load more threads', onclick: function (ev) {
           act(ev.currentTarget, function () {
-            return api('GET', '/api/threads' + qs({ area_id: area.id, state: state, sort: sort, order: order, limit: PAGE, offset: offset })).then(showPage);
+            return fetchPage(area, offset).then(showPage);
           });
         } }));
       }
       showPage(list);
-      return page;
+      return root;
     });
   }
   // one popover at a time: closes on Esc, outside click and navigation; Esc returns focus to its button
@@ -1414,15 +1484,23 @@
       items[(i + (ev.key === next[0] ? 1 : items.length - 1)) % items.length].focus();
     }
   }
+  function positionPop(btn, pop) {
+    var r = btn.getBoundingClientRect();
+    pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - pop.offsetWidth - 8)) + 'px';
+    var below = r.bottom + 6;
+    var above = r.top - pop.offsetHeight - 6;
+    var top = pop.classList.contains('tapback') && above > 8 ? above : below;
+    if (pop.classList.contains('park-pop') && below + pop.offsetHeight > window.innerHeight - 8) {
+      top = above >= 8 ? above : Math.max(8, window.innerHeight - pop.offsetHeight - 8);
+    }
+    pop.style.top = top + 'px';
+  }
   function openPop(btn, pop) {
     var same = popOwner === btn;
     closePop(false);
     if (same) return;
     document.body.appendChild(pop);
-    var r = btn.getBoundingClientRect();
-    pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - pop.offsetWidth - 8)) + 'px';
-    var below = r.bottom + 6;
-    pop.style.top = (pop.classList.contains('tapback') && r.top - pop.offsetHeight - 6 > 8 ? r.top - pop.offsetHeight - 6 : below) + 'px';
+    positionPop(btn, pop);
     popEl = pop; popOwner = btn;
     btn.setAttribute('aria-expanded', 'true');
     document.addEventListener('mousedown', popOutside, true);
@@ -1430,6 +1508,66 @@
     var first = pop.querySelector('button,input'); if (first) first.focus();
   }
   window.addEventListener('hashchange', function () { closePop(false); });
+
+  function parkDate(iso) {
+    var date = new Date(iso + 'T00:00:00Z');
+    var format = { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' };
+    if (date.getUTCFullYear() !== new Date().getFullYear()) format.year = 'numeric';
+    return date.toLocaleDateString(undefined, format);
+  }
+  function unparkButton(t, cls) {
+    return el('button', { type: 'button', class: cls, text: 'Unpark', onclick: function (ev) {
+      var nav = navId;
+      act(ev.currentTarget, function () {
+        return api('POST', '/api/threads/' + t.id + '/unpark').then(function () { if (nav === navId) refresh(); });
+      });
+    } });
+  }
+  function parkButton(t, cls, label) {
+    return el('button', { type: 'button', class: cls, 'aria-haspopup': 'dialog', 'aria-expanded': 'false', text: label,
+      onclick: function (ev) { openParkPicker(ev.currentTarget, t); } });
+  }
+  function openParkPicker(btn, t) {
+    var today = new Date();
+    var year = today.getFullYear(), month = today.getMonth(), day = today.getDate();
+    function after(days) { return new Date(year, month, day + days); }
+    function iso(date) {
+      return [date.getFullYear(), date.getMonth() + 1, date.getDate()].map(function (n) { return String(n).padStart(2, '0'); }).join('-');
+    }
+    var nextMonth = new Date(year, month + 1, Math.min(day, new Date(year, month + 2, 0).getDate()));
+    var presets = [['Tomorrow', after(1)], ['Next Monday', after((8 - today.getDay()) % 7 || 7)],
+      ['In 2 weeks', after(14)], ['Next month', nextMonth]];
+    var dateInput = el('input', { type: 'date', id: 'park-date', 'aria-label': 'Date', required: true, value: t.parked_until });
+    var err = el('div');
+    var form = el('form', { class: 'park-form', onsubmit: function (ev) { ev.preventDefault(); save(dateInput.value); } },
+      dateInput, el('button', { type: 'submit', class: 'primary', text: 'Park' }));
+    var pop = el('div', { class: 'pop park-pop', role: 'dialog', 'aria-label': 'Park until' },
+      el('div', { class: 'cap', text: 'Park until' }), presets.map(function (preset) {
+        var date = iso(preset[1]);
+        return el('button', { type: 'button', class: 'park-preset', onclick: function () { save(date); } },
+          preset[0], el('span', { text: parkDate(date) }));
+      }), form, err);
+    var controls = pop.querySelectorAll('button,input');
+    var nav = navId, saving = false;
+    function save(until) {
+      if (saving) return;
+      saving = true;
+      var focused = document.activeElement;
+      clear(err);
+      controls.forEach(function (control) { control.disabled = true; });
+      api('POST', '/api/threads/' + t.id + '/park', { until: until }).then(function () {
+        if (nav === navId) refresh();
+      }).catch(function (e) {
+        err.appendChild(errBox(e));
+        if (popEl === pop) positionPop(btn, pop);
+      }).finally(function () {
+        controls.forEach(function (control) { control.disabled = false; });
+        saving = false;
+        if (popEl === pop && pop.contains(focused) && document.activeElement === document.body) focused.focus();
+      });
+    }
+    openPop(btn, pop);
+  }
 
   // ---------- messages ----------
   function buildTree(msgs) {
@@ -1527,6 +1665,7 @@
       api('GET', '/api/threads/' + ctx.threadId).then(function (d) {
         if (pollNav !== navId) return;
         var sc = document.getElementById('scroll'), top = sc.scrollTop;
+        ctx.updateParking(d.thread.parked_until);
         d.messages.slice().sort(function (a, b) { return a.id - b.id; }).forEach(function (nm) {
           var blk = ctx.agentBlocks[nm.id];
           if (blk) { blk.repaint(nm.agent_sessions || []); if (blk.refresh) blk.refresh(nm); return; }
@@ -1847,7 +1986,7 @@
       paintTitle();
       var replyTotal = Math.max(0, d.messages.length - 1);
       root.appendChild(el('div', { class: 'thead' },
-        el('div', { class: 'crumb' }, el('a', { href: '#/area/' + areaRef(t), text: t.area_name })),
+        el('div', { class: 'crumb' }, areaPill(t, true)),
         titleSlot,
         el('div', { class: 'tmeta' }, el('span', null, 'by ', userTag(t.owner)), el('span', { text: 'Thread #' + t.id }),
           el('span', { title: 'Last activity ' + fmt(t.last_activity_at), text: ago(t.last_activity_at) }),
@@ -1876,6 +2015,25 @@
         } }));
       }
       root.appendChild(controls);
+      var parkLabel = el('b');
+      var parkBanner = el('div', { class: 'park-banner' },
+        el('span', null, '☾ ', parkLabel, '. Hidden from lists until then.'), unparkButton(t, 'gbtn'));
+      var parkAction = t.closed ? null : parkButton(t, 'gbtn', '');
+      var parkDetail = el('b');
+      function paintParking() {
+        var date = t.parked_until ? parkDate(t.parked_until) : '';
+        parkBanner.hidden = !date;
+        parkLabel.textContent = 'Parked until ' + date;
+        if (parkAction) parkAction.textContent = date ? '☾ Parked until ' + date : '☾ Park until…';
+        parkDetail.textContent = date || 'No';
+      }
+      ctx.updateParking = function (date) {
+        if (date === t.parked_until) return;
+        t.parked_until = date;
+        paintParking();
+      };
+      paintParking();
+      root.appendChild(parkBanner);
       var tree = buildTree(d.messages);
       var opNode = tree.filter(function (n) { return n.m.is_op; })[0];
       var replies = tree.filter(function (n) { return !n.m.is_op; });
@@ -1890,7 +2048,7 @@
         var refList = el('ul', { class: 'reflist card', id: 'refs-list' }, refs.map(function (r) {
           return el('li', null, el('a', { class: 'rt', href: '#/thread/' + r.thread_id + '?m=' + r.message_id }, renderInline(r.title, true)),
             r.closed_reason ? el('span', { class: 'badge closed', text: 'closed: ' + r.closed_reason }) : null,
-            el('span', { class: 'rm' }, el('span', { text: r.area_name || r.area_slug }), el('span', { text: r.author }), el('span', { title: fmt(r.at), text: ago(r.at) })));
+            el('span', { class: 'rm' }, areaPill(r, true), el('span', { text: r.author }), el('span', { title: fmt(r.at), text: ago(r.at) })));
         }));
         var refToggle = el('button', { type: 'button', class: 'reftoggle', 'aria-expanded': 'true', 'aria-controls': 'refs-list', text: 'References (' + refs.length + ')', onclick: function () {
           var open = refList.hidden;
@@ -1945,7 +2103,7 @@
           });
           panel.appendChild(el('div', { class: 'bigvote' }, stepper));
         }
-        panel.appendChild(el('h3', { text: 'Area · ' + t.area_name }));
+        panel.appendChild(el('h3', null, 'Area · ', areaPill(t)));
         panel.appendChild(el('div', { class: 'grp' }, area && area.description ? renderMarkdown(area.description) : el('p', { class: 'mut', text: '(no description)' })));
         var pending = d.messages.filter(function (m) { return m.my_attention && m.my_attention.status === 'unacknowledged'; });
         panel.appendChild(el('h3', { text: 'Attention' }));
@@ -1971,15 +2129,19 @@
         var actions = el('div', { class: 'stack' });
         if (isOwner) actions.appendChild(pinButton());
         if (closed) actions.appendChild(reopenButton());
-        else ['completed', 'archived'].forEach(function (r) {
-          actions.appendChild(el('button', { type: 'button', class: 'gbtn', text: 'Close as ' + r, onclick: function (ev) {
-            act(ev.currentTarget, function () { return api('POST', '/api/threads/' + t.id + '/close', { reason: r }).then(refresh); }); } }));
-        });
+        else {
+          actions.appendChild(parkAction);
+          ['completed', 'archived'].forEach(function (r) {
+            actions.appendChild(el('button', { type: 'button', class: 'gbtn', text: 'Close as ' + r, onclick: function (ev) {
+              act(ev.currentTarget, function () { return api('POST', '/api/threads/' + t.id + '/close', { reason: r }).then(refresh); }); } }));
+          });
+        }
         panel.appendChild(actions);
         panel.appendChild(el('h3', { text: 'Details' }));
         panel.appendChild(el('div', { class: 'grp' },
           el('div', { class: 'kv' }, 'Last activity', el('b', { title: fmt(t.last_activity_at), text: agoLong(t.last_activity_at) })),
           el('div', { class: 'kv' }, 'Created', el('b', { title: fmt(t.created_at), text: agoLong(t.created_at) })),
+          el('div', { class: 'kv' }, 'Parked', parkDetail),
           el('div', { class: 'kv' }, 'Messages', el('b', { text: String(d.messages.length) }))));
       };
       return root;
@@ -1992,7 +2154,7 @@
       var root = el('div', { class: 'screen' });
       var closed = !!c.thread.closed;
       root.areaId = c.area.id;
-      root.appendChild(el('div', { class: 'mut' }, el('a', { href: '#/area/' + areaRef(c.area), text: c.area.name })));
+      root.appendChild(el('div', { class: 'mut' }, areaPill(c.area, true)));
       root.appendChild(el('h1', null, renderInline(c.thread.title, false), ' ', modified(c.thread)));
       root.appendChild(el('div', { class: 'card' }, el('div', { class: 'mut', text: 'Area description / instructions' }), c.area.description ? renderMarkdown(c.area.description) : el('div', { class: 'body', text: '(none)' })));
       root.appendChild(el('p', null, el('a', { href: '#/thread/' + c.thread.id + '?m=' + c.target_id, text: 'Open full thread at this message' }),
@@ -2063,7 +2225,7 @@
               if (!list.firstChild && !more.firstChild) root.insertBefore(el('div', { class: 'empty', text: 'Nothing here.' }), list);
             }
           } };
-          box.appendChild(el('div', { class: 'mut' }, m.area_name + ' › ', el('a', { href: '#/thread/' + m.thread_id }, renderInline(m.thread_title, true)), ' · reason: ' + (m.my_attention ? m.my_attention.reason : ''), ' ',
+          box.appendChild(el('div', { class: 'mut' }, areaPill(m, true), ' › ', el('a', { href: '#/thread/' + m.thread_id }, renderInline(m.thread_title, true)), ' · reason: ' + (m.my_attention ? m.my_attention.reason : ''), ' ',
             m.thread_closed_reason ? el('span', { class: 'badge closed', text: 'closed: ' + m.thread_closed_reason }) : null, ' ',
             m.thread_closed_reason ? el('a', { href: '#/thread/' + m.thread_id, text: 'Reopen thread' }) : null));
           box.appendChild(renderMsgNode({ m: m, kids: [] }, ctx, 1, true));
@@ -2116,11 +2278,11 @@
     return fetchPage().then(function (r) {
       if (!r.areas.length && !r.threads.length && !r.messages.length) root.appendChild(el('div', { class: 'empty', text: 'No results.' }));
       var cats = {
-        areas: { title: 'Areas', draw: function (a) { return el('div', { class: 'card' }, mark(el('a', { href: '#/area/' + areaRef(a), text: a.name })), mark(el('div', { class: 'body mut', text: a.snippet }))); } },
-        threads: { title: 'Threads', draw: function (t) { return el('div', { class: 'card' }, mark(el('a', { href: '#/thread/' + t.id }, renderInline(t.title, true))), ' ', modified(t), ' ', el('span', { class: 'mut', text: t.area_name }), t.closed_reason ? el('span', { class: 'badge closed', text: ' closed: ' + t.closed_reason }) : null); } },
+        areas: { title: 'Areas', draw: function (a) { return el('div', { class: 'card' }, mark(areaPill(a, true)), mark(el('div', { class: 'body mut', text: a.snippet }))); } },
+        threads: { title: 'Threads', draw: function (t) { return el('div', { class: 'card' }, mark(el('a', { href: '#/thread/' + t.id }, renderInline(t.title, true))), ' ', modified(t), ' ', areaPill(t, true), t.closed_reason ? el('span', { class: 'badge closed', text: ' closed: ' + t.closed_reason }) : null); } },
         messages: { title: 'Messages', draw: function (m) {
           return el('div', { class: 'card' },
-            el('div', { class: 'mut' }, m.area_name + ' › ', mark(el('a', { href: '#/thread/' + m.thread_id }, renderInline(m.thread_title, true))), ' · ', userTag(m.author), ' · ' + fmt(m.created_at), ' ', modified(m),
+            el('div', { class: 'mut' }, areaPill(m, true), ' › ', mark(el('a', { href: '#/thread/' + m.thread_id }, renderInline(m.thread_title, true))), ' · ', userTag(m.author), ' · ' + fmt(m.created_at), ' ', modified(m),
               m.closed_reason ? el('span', { class: 'badge closed', text: 'closed: ' + m.closed_reason }) : null),
             mark(el('div', { class: 'body', text: m.snippet })),
             el('a', { href: '#/context/' + m.id, text: 'Show context' }));
@@ -2150,7 +2312,8 @@
 
   // ---------- activity ----------
   var KIND = { area_created: 'created area', area_updated: 'updated area', thread_created: 'created thread', message_posted: 'posted a message in',
-    message_edited: 'edited a message in', thread_edited: 'edited thread', thread_closed: 'closed thread', thread_reopened: 'reopened thread', thread_pinned: 'pinned thread', thread_unpinned: 'unpinned thread' };
+    message_edited: 'edited a message in', thread_edited: 'edited thread', thread_closed: 'closed thread', thread_reopened: 'reopened thread',
+    thread_pinned: 'pinned thread', thread_unpinned: 'unpinned thread', thread_parked: 'parked thread', thread_unparked: 'unparked thread' };
   function viewActivity() {
     var root = el('div', { class: 'screen' }); root.appendChild(el('h1', { text: 'Activity' }));
     var list = el('ol', { class: 'timeline' }); var more = el('div', { class: 'pager' }); root.appendChild(list); root.appendChild(more);
@@ -2178,7 +2341,9 @@
             el('span', { class: 'dot', 'aria-hidden': 'true' }),
             el('div', { class: 'what' },
               el('div', null, who(e.actor), ' ' + (KIND[e.kind] || e.kind) + ' ', el('a', { href: href, text: e.thread_title || e.area_name || 'item' })),
-              el('div', { class: 'where', text: (e.area_name || '') + (e.kind === 'thread_closed' && e.detail ? ' · ' + e.detail : '') }))));
+              el('div', { class: 'where' }, areaPill(e, true),
+                e.kind === 'thread_closed' && e.detail ? ' · ' + e.detail : null,
+                e.kind === 'thread_parked' && e.detail ? ' · until ' + parkDate(e.detail) : null))));
         });
         if (r.events.length >= 50) more.appendChild(el('button', { type: 'button', text: 'Load more', onclick: function (ev) { act(ev.currentTarget, load); } }));
       }).catch(function (e) { clear(more); more.appendChild(errBox(e, function () { load(); })); });

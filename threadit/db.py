@@ -1,9 +1,22 @@
 import math
 import sqlite3
 from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
+from typing import Literal, get_args
+from zoneinfo import ZoneInfo
 
 from threadit.slugs import unique_area_slug
+
+AreaColor = Literal[
+    "blue", "purple", "pink", "orange", "green", "teal", "indigo", "brown", "coral", "gray"
+]
+AREA_COLORS = get_args(AreaColor)
+PARIS = ZoneInfo("Europe/Paris")
+
+
+def paris_today(instant: datetime | None = None) -> str:
+    return (instant.astimezone(PARIS) if instant else datetime.now(PARIS)).date().isoformat()
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
@@ -129,7 +142,9 @@ ADDED_COLUMNS = [
     ("users", "description", "TEXT NOT NULL DEFAULT ''"),
     ("users", "email", "TEXT NOT NULL DEFAULT ''"),
     ("areas", "slug", "TEXT NOT NULL DEFAULT ''"),
+    ("areas", "color", "TEXT NOT NULL DEFAULT ''"),
     ("threads", "edited_at", "TEXT"),
+    ("threads", "parked_until", "TEXT"),
     ("messages", "edited_at", "TEXT"),
     ("messages", "deleted_at", "TEXT"),
     ("attention", "stop_requested_at", "TEXT"),
@@ -150,6 +165,11 @@ def migrate(conn: sqlite3.Connection) -> None:
         )
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS areas_slug ON areas (slug)")
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS users_email ON users (email) WHERE email <> ''")
+    rows = conn.execute("SELECT id FROM areas WHERE color = '' ORDER BY id").fetchall()
+    conn.executemany(
+        "UPDATE areas SET color = ? WHERE id = ?",
+        [(AREA_COLORS[i % len(AREA_COLORS)], row["id"]) for i, row in enumerate(rows)],
+    )
 
 
 class Database:
@@ -162,7 +182,9 @@ class Database:
         try:
             conn.execute("PRAGMA journal_mode=WAL")
             conn.executescript(SCHEMA)
+            conn.execute("BEGIN IMMEDIATE")
             migrate(conn)
+            conn.commit()
         finally:
             conn.close()
 
@@ -173,6 +195,8 @@ class Database:
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys=ON")
         conn.create_function("log2", 1, math.log2, deterministic=True)
+        today = paris_today()
+        conn.create_function("paris_today", 0, lambda: today, deterministic=True)
         return conn
 
     @contextmanager

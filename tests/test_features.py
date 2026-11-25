@@ -361,9 +361,13 @@ def test_old_database_is_migrated(tmp_path):
         "big ideas!": "big-ideas-2",
         "Other": "other",
     }
+    assert {a["name"]: a["color"] for a in areas} == {
+        "Big Ideas": "blue", "big ideas!": "purple", "Other": "pink",
+    }
     assert client.get("/api/areas/big-ideas", headers=headers).json()["id"] == 1
     detail = client.get("/api/threads/1", headers=headers).json()
     assert detail["thread"]["edited_at"] is None and detail["thread"]["area_slug"] == "big-ideas"
+    assert detail["thread"]["parked_until"] is None
     message = detail["messages"][0]
     assert message["edited_at"] is None and message["attachments"] == []
     assert message["agent_sessions"] == []
@@ -389,7 +393,7 @@ def test_old_database_is_migrated(tmp_path):
     client.close()
     # reopening an already-migrated db is a no-op
     client = TestClient(create_app(path, static_dir=tmp_path / "nostatic"))
-    assert client.get("/api/areas/other", headers=headers).status_code == 200
+    assert client.get("/api/areas/other", headers=headers).json()["color"] == "pink"
     client.close()
 
 

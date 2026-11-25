@@ -13,6 +13,7 @@ SELECT m.id, m.thread_id, m.parent_id, m.is_op, m.body, m.created_at, m.score, m
        m.deleted_at,
        u.id AS author_id, u.username AS author_username, u.account_type AS author_type,
        t.title AS thread_title, t.area_id AS area_id, ar.name AS area_name, ar.slug AS area_slug,
+       ar.color AS area_color,
        att.status AS att_status, att.reason AS att_reason,
        t.closed_reason AS thread_closed_reason
 FROM messages m
@@ -22,10 +23,22 @@ JOIN areas ar ON ar.id = t.area_id
 LEFT JOIN attention att ON att.message_id = m.id AND att.user_id = ?
 """
 
-_THREAD_SQL = """
-SELECT t.id, t.area_id, ar.name AS area_name, ar.slug AS area_slug, t.title,
+IS_PARKED = "COALESCE(t.parked_until > paris_today(), 0)"
+
+_AREA_SQL = f"""
+SELECT a.*,
+       COUNT(t.id) FILTER (WHERE t.closed_reason IS NULL AND NOT {IS_PARKED}) AS active_threads,
+       COUNT(t.id) FILTER (WHERE t.closed_reason IS NULL AND {IS_PARKED}) AS parked_threads,
+       COUNT(t.id) FILTER (WHERE t.closed_reason IS NOT NULL) AS closed_threads,
+       MAX(t.last_activity_at) AS last_activity_at
+FROM areas a LEFT JOIN threads t ON t.area_id = a.id
+"""
+
+_THREAD_SQL = f"""
+SELECT t.id, t.area_id, ar.name AS area_name, ar.color AS area_color, ar.slug AS area_slug, t.title,
        t.created_at, t.edited_at,
        t.last_activity_at, t.pinned, t.closed_reason, t.closed_at,
+       CASE WHEN {IS_PARKED} THEN t.parked_until END AS parked_until,
        cb.username AS closed_by,
        o.id AS owner_id, o.username AS owner_username, o.account_type AS owner_type,
        op.id AS op_message_id, op.score AS importance,
@@ -82,39 +95,29 @@ def area_json(row: sqlite3.Row) -> dict:
         "id": row["id"],
         "name": row["name"],
         "slug": row["slug"],
+        "color": row["color"],
         "description": row["description"],
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
+        "active_threads": row["active_threads"],
+        "parked_threads": row["parked_threads"],
+        "closed_threads": row["closed_threads"],
+        "last_activity_at": row["last_activity_at"],
     }
 
 
 def list_areas(conn: sqlite3.Connection) -> list[dict]:
-    rows = conn.execute(
-        """
-        SELECT a.*,
-          (SELECT COUNT(*) FROM threads t WHERE t.area_id = a.id AND t.closed_reason IS NULL) AS active_threads,
-          (SELECT COUNT(*) FROM threads t WHERE t.area_id = a.id AND t.closed_reason IS NOT NULL) AS closed_threads,
-          (SELECT MAX(t.last_activity_at) FROM threads t WHERE t.area_id = a.id) AS last_activity_at
-        FROM areas a ORDER BY a.name_key
-        """
-    ).fetchall()
     return [
-        {
-            **area_json(r),
-            "active_threads": r["active_threads"],
-            "closed_threads": r["closed_threads"],
-            "last_activity_at": r["last_activity_at"],
-        }
-        for r in rows
+        area_json(r) for r in conn.execute(_AREA_SQL + " GROUP BY a.id ORDER BY a.name_key")
     ]
 
 
 def get_area(conn: sqlite3.Connection, area_ref: int | str) -> sqlite3.Row:
     """Area by numeric id, or by slug when `area_ref` is not an integer."""
     if isinstance(area_ref, str) and not re.fullmatch(r"[0-9]+", area_ref):
-        row = conn.execute("SELECT * FROM areas WHERE slug = ?", (area_ref,)).fetchone()
+        row = conn.execute(_AREA_SQL + " WHERE a.slug = ? GROUP BY a.id", (area_ref,)).fetchone()
     else:
-        row = conn.execute("SELECT * FROM areas WHERE id = ?", (int(area_ref),)).fetchone()
+        row = conn.execute(_AREA_SQL + " WHERE a.id = ? GROUP BY a.id", (int(area_ref),)).fetchone()
     if row is None:
         raise ApiError(404, "area_not_found", f"Area {area_ref} does not exist.")
     return row
@@ -132,6 +135,7 @@ def thread_json(row: sqlite3.Row) -> dict:
         "id": row["id"],
         "area_id": row["area_id"],
         "area_name": row["area_name"],
+        "area_color": row["area_color"],
         "area_slug": row["area_slug"],
         "title": row["title"],
         "owner": {
@@ -143,6 +147,7 @@ def thread_json(row: sqlite3.Row) -> dict:
         "edited_at": row["edited_at"],
         "last_activity_at": row["last_activity_at"],
         "pinned": bool(row["pinned"]),
+        "parked_until": row["parked_until"],
         "closed": closed,
         "importance": row["importance"],
         "op_message_id": row["op_message_id"],
@@ -162,7 +167,10 @@ def fetch_threads(
     order: str = "desc",
 ) -> list[dict]:
     direction = {"asc": "ASC", "desc": "DESC"}[order]
-    sql = f"{_THREAD_SQL} WHERE {where} ORDER BY {THREAD_ORDERS[sort].format(d=direction)}"
+    sql = (
+        f"{_THREAD_SQL} WHERE {where}"
+        f" ORDER BY {IS_PARKED}, {THREAD_ORDERS[sort].format(d=direction)}"
+    )
     args: tuple = (viewer_id, *params)
     if limit is not None:
         sql += " LIMIT ? OFFSET ?"
@@ -234,6 +242,7 @@ def fetch_messages(
                 "thread_title": r["thread_title"],
                 "area_id": r["area_id"],
                 "area_name": r["area_name"],
+                "area_color": r["area_color"],
                 "area_slug": r["area_slug"],
                 "parent_id": r["parent_id"],
                 "is_op": bool(r["is_op"]),
@@ -282,7 +291,7 @@ def referenced_by(conn: sqlite3.Connection, thread_id: int) -> list[dict]:
     """Other threads with a live message that references this thread, newest first."""
     rows = conn.execute(
         "SELECT m.id, m.thread_id, m.body, m.created_at, u.username,"
-        " t.title, t.closed_reason, a.slug AS area_slug, a.name AS area_name"
+        " t.title, t.closed_reason, a.slug AS area_slug, a.name AS area_name, a.color AS area_color"
         " FROM messages m JOIN threads t ON t.id = m.thread_id"
         " JOIN areas a ON a.id = t.area_id JOIN users u ON u.id = m.author_id"
         " WHERE m.thread_id != ? AND m.deleted_at IS NULL AND m.body LIKE ?"
@@ -300,6 +309,7 @@ def referenced_by(conn: sqlite3.Connection, thread_id: int) -> list[dict]:
                 "title": r["title"],
                 "area_slug": r["area_slug"],
                 "area_name": r["area_name"],
+                "area_color": r["area_color"],
                 "closed_reason": r["closed_reason"],
                 "message_id": r["id"],
                 "author": r["username"],
