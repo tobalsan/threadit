@@ -35,25 +35,30 @@ All approved users share everything. No per-area permissions.
 
 ## Areas
 
-Area: `{id, name, slug, description, created_at, updated_at}`; `description` holds the area
+Area: `{id, name, slug, color, description, created_at, updated_at, active_threads, parked_threads, closed_threads, last_activity_at}`; `description` holds the area
 description/instructions. Names unique case-insensitively. `slug` is unique, derived from the name
 (lowercase, runs of non-alphanumerics -> `-`, trimmed; all-digit names get an `area-` prefix; on collision
 `-<id>` is appended) and regenerated whenever the name is PATCHed.
-- `GET /api/areas` -> `{areas:[area + active_threads, closed_threads, last_activity_at]}` (by name)
+- `GET /api/areas` -> `{areas:[area]}` (by name). `active_threads` now excludes parked threads.
+  Add `parked_threads` to get all open threads.
 - `POST /api/areas` `{name (1-80), description? (<=10000)}` -> 201 area
-- `GET /api/areas/{id_or_slug}`; `PATCH /api/areas/{id_or_slug}` `{name?, description?}` -> area. No delete.
+  Color defaults to the first unused preset, or a random preset once all are in use.
+- `GET /api/areas/{id_or_slug}`; `PATCH /api/areas/{id_or_slug}` `{name?, description?, color?}` -> area.
+  Presets in order are `blue`, `purple`, `pink`, `orange`, `green`, `teal`, `indigo`, `brown`, `coral`, `gray`.
+  An invalid color returns 422 `invalid_input`. No delete.
 
 ## Threads
 
 Thread summary:
 ```
-{id, area_id, area_name, area_slug, title, owner:{id,username,account_type}, created_at,
- edited_at|null, last_activity_at, pinned, closed: null | {reason:"completed"|"archived", at, by:username},
+{id, area_id, area_name, area_color, area_slug, title, owner:{id,username,account_type}, created_at,
+ edited_at|null, last_activity_at, pinned, parked_until:"YYYY-MM-DD"|null,
+ closed: null | {reason:"completed"|"archived", at, by:username},
  importance (= OP score only), op_message_id, message_count,
  pending_attention (viewer's unacknowledged messages in this thread; 0 when closed)}
 ```
-- `GET /api/threads?area_id=&state=active|closed|all|completed|archived&sort=created|activity|importance|hot|closed&order=desc|asc&closed_since=&limit=100&offset=0`
-  -> `{pinned:[summary], threads:[summary], has_more}`. `pinned` is a separate group (not paginated,
+- `GET /api/threads?area_id=&state=active|closed|all|completed|archived&sort=created|activity|importance|hot|closed&order=desc|asc&parked=exclude|include&closed_since=&limit=100&offset=0`
+  -> `{pinned:[summary], threads:[summary], has_more, parked_count}`. `pinned` is a separate group (not paginated,
   same sort) and excluded from `threads`; `offset`/`limit` page only `threads`, `has_more` says
   whether a next page exists (clients render `pinned` from the first page only). Default
   `state=active`, `sort=importance` (OP score; `created`/`activity` are explicit choices), `order=desc`
@@ -70,11 +75,13 @@ Thread summary:
   `closed_since` accepts an ISO 8601 timestamp with a timezone and converts it to UTC; it keeps closes at or after
   that instant and excludes active threads, regardless of `state`. Invalid or timezone-free values return 422 `invalid_input`.
   Example: `GET /api/threads?state=completed&sort=closed&closed_since=2026-10-17T00:00:00Z&limit=5`.
+  `parked=exclude` is the default. With `parked=include`, all parked threads sort after the other threads in the requested sort order
+  and stay out of the `pinned` group even if pinned. `parked_count` applies the other filters before pagination in either mode.
 - `POST /api/threads` `{area_id, title (1-200), body (1-20000), attachment_ids?}` -> 201 thread detail.
   Body becomes the OP message; `attachment_ids` (max 10) are linked to it. This is also the migration/creation endpoint for agents.
 - `GET /api/threads/{id}` -> `{thread, area, messages:[message]}` (all messages flat, id asc;
   build the tree from `parent_id`). Works for closed threads. Detail also has
-  `referenced_by:[{thread_id,title,area_slug,area_name,closed_reason,message_id,author,at}]`: other threads (open or closed)
+  `referenced_by:[{thread_id,title,area_slug,area_name,area_color,closed_reason,message_id,author,at}]`: other threads (open or closed)
   with a non-deleted message that references this thread as `#<id>` outside code spans and fenced blocks.
   `message_id`, `author` and `at` come from the newest such message; newest `at` first; `[]` when none.
 - `GET /api/threads/{id}/messages?top_level_only=false` -> `{messages}`; `true` returns all
@@ -84,18 +91,26 @@ Thread summary:
   a `parent_id` equal to the OP id as `null`, because the OP has no nested replies.
 - `PATCH /api/threads/{id}` `{title (1-200)}` -> summary. Owner only (403 `not_owner`); sets `edited_at`,
   records a `thread_edited` event.
+- `POST /api/threads/{id}/park` `{until: "YYYY-MM-DD"}` -> summary. Any approved account can set or replace the date.
+  Dates must be after today in Europe/Paris (422 `invalid_input` for invalid or nonfuture dates).
+  A closed thread returns 409 `thread_closed`.
+- `POST /api/threads/{id}/unpark` (no body) -> summary. Any approved account can clear the date. Safe to repeat.
+  Neither route changes `last_activity_at`. `parked_until` reads as `null` from 00:00 Europe/Paris on its date.
+  Direct reads, context, search and Attention still include parked threads.
+  A new message that creates attention for anyone unparks the thread. A top-level reply from someone other than the OP author
+  notifies the OP author. The OP author's top-level reply only unparks if it creates mention attention.
 - `POST /api/threads/{id}/close` `{reason:"completed"|"archived"}` -> summary (any approved
-  account; 409 `already_closed` if closed). `POST /api/threads/{id}/reopen` -> summary
+  account; 409 `already_closed` if closed). Closing clears the park date. `POST /api/threads/{id}/reopen` -> summary
   (409 `not_closed`).
 - `PUT /api/threads/{id}/pin` `{pinned: bool}` -> summary. Owner (creator) only, else 403 `not_owner`.
 
-Closed thread: every write (messages, edits, votes, reactions add/remove, pin) -> 409
-`thread_closed`, except reopen. Reading, context, search with `include_closed` stay available.
+Closed thread: messages, edits, votes, reactions add/remove, pin and park return 409
+`thread_closed`. Reading, context, search with `include_closed` stay available.
 
 ## Messages
 
 ```
-{id, thread_id, thread_title, area_id, area_name, area_slug, parent_id|null, is_op,
+{id, thread_id, thread_title, area_id, area_name, area_color, area_slug, parent_id|null, is_op,
  author:{id,username,account_type}, body, created_at, edited_at|null, deleted_at|null,
  attachments:[{id,filename,content_type,size,url}], score,
  reactions:[{emoji, count, users:[username], mine}],
@@ -214,19 +229,20 @@ messages are independently pending; there is no thread-wide clearing.
 
 ## Search and activity
 
-Search/activity items that carry `area_name` also carry `area_slug` (areas carry `slug`).
+Search and activity items that carry `area_name` also carry `area_slug` and `area_color`.
 
-- `GET /api/search?q=&include_closed=false&area_id=&limit=50&areas_offset=0&threads_offset=0&messages_offset=0` -> `{query, has_more:{areas,threads,messages}, areas:[{id,name,slug,snippet}],
-  threads:[{id,title,area_id,area_name,area_slug,edited_at,closed_reason}], messages:[{id,thread_id,thread_title,
-  area_id,area_name,area_slug,parent_id,author,created_at,edited_at,snippet,closed_reason,context_url,linked_threads}]}`.
+- `GET /api/search?q=&include_closed=false&area_id=&limit=50&areas_offset=0&threads_offset=0&messages_offset=0` -> `{query, has_more:{areas,threads,messages}, areas:[{id,name,slug,color,snippet}],
+  threads:[{id,title,area_id,area_name,area_color,area_slug,edited_at,closed_reason}], messages:[{id,thread_id,thread_title,
+  area_id,area_name,area_color,area_slug,parent_id,author,created_at,edited_at,snippet,closed_reason,context_url,linked_threads}]}`.
   Case-insensitive substring over area name/description, thread title, message body
   (`%`/`_` literal). Closed-thread hits only with `include_closed=true`. Plain text only. `limit` applies per category;
   each category pages independently via its own offset, `has_more` flags which have more.
 - `GET /api/activity?limit=50&before_id=` -> `{events:[{id, kind, detail, created_at, actor,
-  area_id, area_name, thread_id, thread_title, thread_closed_reason, message_id, context_url}]}`,
+  area_id, area_name, area_color, area_slug, thread_id, thread_title, thread_closed_reason, message_id, context_url}]}`,
   newest first; page with `before_id`. Kinds: `area_created`, `area_updated`,
   `thread_created`, `message_posted`, `message_edited`, `thread_edited`, `thread_closed` (detail=reason), `thread_reopened`,
-  `thread_pinned`, `thread_unpinned`. Jump: thread -> `thread_id`; message -> `message_id`/`context_url`.
+  `thread_pinned`, `thread_unpinned`, `thread_parked` (date in `detail`), `thread_unparked` (manual unpark).
+  Jump: thread -> `thread_id`; message -> `message_id`/`context_url`.
   Votes and reactions are not events.
 
 ## Known gaps (v0)

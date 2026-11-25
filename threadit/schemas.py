@@ -1,6 +1,9 @@
+from datetime import date
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from threadit.db import AreaColor
 
 
 class Strict(BaseModel):
@@ -42,6 +45,13 @@ class AreaIn(Strict):
 class AreaPatch(Strict):
     name: str | None = Field(None, min_length=1, max_length=80)
     description: str | None = Field(None, max_length=10000)
+    color: AreaColor | None = None
+
+    @model_validator(mode="after")
+    def color_not_null(self):
+        if "color" in self.model_fields_set and self.color is None:
+            raise ValueError("color must be a preset name")
+        return self
 
 
 class ThreadIn(Strict):
@@ -74,6 +84,15 @@ class MessagePatch(Strict):
 
 class CloseIn(Strict):
     reason: Literal["completed", "archived"]
+
+
+class ParkIn(Strict):
+    until: str = Field(pattern=r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+
+    @model_validator(mode="after")
+    def valid_date(self):
+        date.fromisoformat(self.until)
+        return self
 
 
 class PinIn(Strict):

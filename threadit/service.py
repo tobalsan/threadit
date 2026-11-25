@@ -147,11 +147,13 @@ def insert_message(
         (thread["id"], parent_id, author["id"], body, ts, int(is_op)),
     ).lastrowid
     link_attachments(conn, author, attachment_ids, message_id)
-    record_attention(conn, message_id, author, parent_author_id, body)
+    needs_attention = record_attention(conn, message_id, author, parent_author_id, body)
     if replied_to is not None:
         acknowledge_human(conn, author, replied_to["id"])
     conn.execute(
-        "UPDATE threads SET last_activity_at = ? WHERE id = ?", (ts, thread["id"])
+        "UPDATE threads SET last_activity_at = ?,"
+        " parked_until = CASE WHEN ? THEN NULL ELSE parked_until END WHERE id = ?",
+        (ts, needs_attention, thread["id"]),
     )
     if not is_op:
         add_event(

@@ -1,5 +1,6 @@
 import sqlite3
 from datetime import datetime, timezone
+from random import choice
 from typing import Literal
 
 from fastapi import APIRouter, Query, Request
@@ -11,6 +12,7 @@ from threadit.attention import (
     agent_reaction_removed,
 )
 from threadit.core import ApiError, now, session
+from threadit.db import AREA_COLORS
 from threadit.schemas import (
     AgentActivityIn,
     AreaIn,
@@ -18,6 +20,7 @@ from threadit.schemas import (
     CloseIn,
     MessageIn,
     MessagePatch,
+    ParkIn,
     PinIn,
     ReactionIn,
     ThreadIn,
@@ -37,6 +40,7 @@ from threadit.service import (
     require_open,
 )
 from threadit.views import (
+    IS_PARKED,
     area_json,
     fetch_messages,
     fetch_threads,
@@ -72,10 +76,14 @@ def create_area(body: AreaIn, request: Request):
     with session(request, write=True) as (conn, user):
         _check_area_name_free(conn, body.name)
         ts = now()
+        used = {row["color"] for row in conn.execute("SELECT DISTINCT color FROM areas")}
+        color = next((preset for preset in AREA_COLORS if preset not in used), None)
+        if color is None:
+            color = choice(AREA_COLORS)
         area_id = conn.execute(
-            "INSERT INTO areas (name, name_key, description, created_by, created_at, updated_at)"
-            " VALUES (?, ?, ?, ?, ?, ?)",
-            (body.name, body.name.lower(), body.description, user["id"], ts, ts),
+            "INSERT INTO areas (name, name_key, description, created_by, created_at, updated_at, color)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (body.name, body.name.lower(), body.description, user["id"], ts, ts, color),
         ).lastrowid
         conn.execute(
             "UPDATE areas SET slug = ? WHERE id = ?",
@@ -100,14 +108,15 @@ def edit_area(area_ref: str, body: AreaPatch, request: Request):
         description = (
             body.description if body.description is not None else area["description"]
         )
+        color = body.color if body.color is not None else area["color"]
         _check_area_name_free(conn, name, area_id)
         slug = (
             unique_area_slug(conn, name, area_id) if body.name is not None else area["slug"]
         )
         conn.execute(
-            "UPDATE areas SET name = ?, name_key = ?, slug = ?, description = ?, updated_at = ?"
+            "UPDATE areas SET name = ?, name_key = ?, slug = ?, description = ?, color = ?, updated_at = ?"
             " WHERE id = ?",
-            (name, name.lower(), slug, description, now(), area_id),
+            (name, name.lower(), slug, description, color, now(), area_id),
         )
         add_event(conn, "area_updated", user["id"], area_id)
         return area_json(get_area(conn, area_id))
@@ -136,6 +145,7 @@ def list_threads(
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     closed_since: str | None = None,
+    parked: Literal["exclude", "include"] = "exclude",
 ):
     with session(request) as (conn, user):
         clauses, params = [], []
@@ -162,17 +172,27 @@ def list_threads(
             clauses.append("t.closed_at >= ?")
             params.append(normalized)
         base = " AND ".join(clauses) or "1=1"
+        args = tuple(params)
+        parked_count = conn.execute(
+            f"SELECT COUNT(*) FROM threads t WHERE {base} AND {IS_PARKED}", args
+        ).fetchone()[0]
+        if parked == "exclude":
+            base += f" AND NOT {IS_PARKED}"
         if sort in ("hot", "closed"):
             pinned = []
-            rest = fetch_threads(conn, user["id"], base, tuple(params), sort, limit + 1, offset, order)
         else:
             pinned = fetch_threads(
-                conn, user["id"], base + " AND t.pinned = 1", tuple(params), sort, order=order
+                conn, user["id"], base + f" AND t.pinned = 1 AND NOT {IS_PARKED}",
+                args, sort, order=order,
             )
-            rest = fetch_threads(
-                conn, user["id"], base + " AND t.pinned = 0", tuple(params), sort, limit + 1, offset, order
-            )
-        return {"pinned": pinned, "threads": rest[:limit], "has_more": len(rest) > limit}
+            base += f" AND (t.pinned = 0 OR {IS_PARKED})"
+        rest = fetch_threads(conn, user["id"], base, args, sort, limit + 1, offset, order)
+        return {
+            "pinned": pinned,
+            "threads": rest[:limit],
+            "has_more": len(rest) > limit,
+            "parked_count": parked_count,
+        }
 
 
 @router.post("/api/threads", status_code=201)
@@ -246,13 +266,39 @@ def close_thread(thread_id: int, body: CloseIn, request: Request):
         ts = now()
         conn.execute(
             "UPDATE threads SET closed_reason = ?, closed_at = ?, closed_by = ?,"
-            " last_activity_at = ? WHERE id = ?",
+            " last_activity_at = ?, parked_until = NULL WHERE id = ?",
             (body.reason, ts, user["id"], ts, thread_id),
         )
         add_event(
             conn, "thread_closed", user["id"], thread["area_id"], thread_id, None, body.reason
         )
         return get_thread_json(conn, user["id"], thread_id)
+
+
+@router.post("/api/threads/{thread_id}/park")
+def park_thread(thread_id: int, body: ParkIn, request: Request):
+    with session(request, write=True) as (conn, user):
+        thread = get_thread_row(conn, thread_id)
+        require_open(thread)
+        today = conn.execute("SELECT paris_today()").fetchone()[0]
+        if body.until <= today:
+            raise ApiError(422, "invalid_input", "Park until a date after today in Paris.")
+        conn.execute("UPDATE threads SET parked_until = ? WHERE id = ?", (body.until, thread_id))
+        add_event(
+            conn, "thread_parked", user["id"], thread["area_id"], thread_id, detail=body.until
+        )
+        return get_thread_json(conn, user["id"], thread_id)
+
+
+@router.post("/api/threads/{thread_id}/unpark")
+def unpark_thread(thread_id: int, request: Request):
+    with session(request, write=True) as (conn, user):
+        thread = get_thread_json(conn, user["id"], thread_id)
+        conn.execute("UPDATE threads SET parked_until = NULL WHERE id = ?", (thread_id,))
+        if thread["parked_until"]:
+            add_event(conn, "thread_unparked", user["id"], thread["area_id"], thread_id)
+            thread["parked_until"] = None
+        return thread
 
 
 @router.post("/api/threads/{thread_id}/reopen")

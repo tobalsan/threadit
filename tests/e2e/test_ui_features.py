@@ -81,7 +81,8 @@ def test_markdown_renders_and_is_xss_safe(server, browser):
     ctx, page = open_page(browser, server, human)
     try:
         page.goto(f"{server}/#/area/docs")
-        card = page.locator(".card .md").first
+        page.get_by_role("button", name="Toggle area info").click()
+        card = page.get_by_role("complementary", name="Area info").locator(".md")
         expect(card.locator("h3")).to_have_text("Rules")
         expect(card.locator("ul li")).to_have_count(2)
         expect(card.locator("ul li strong")).to_have_text("kind")
@@ -569,6 +570,7 @@ def test_area_rename_from_area_page_shows_renamed_area(server, browser):
     ctx, page = open_page(browser, server, human)
     try:
         page.goto(f"{server}/#/area/before")
+        page.get_by_role("button", name="Toggle area info").click()
         page.get_by_role("button", name="Edit area").click()
         page.get_by_label("Name").fill("After Rename")
         page.get_by_role("button", name="Save", exact=True).click()
@@ -780,7 +782,7 @@ def test_cmd_enter_submits_message_and_edit(server, browser):
         ctx.close()
 
 
-def test_area_sidebar_and_quick_vote_from_list(server, browser):
+def test_area_info_overlays_the_full_width_list(server, browser):
     human, _ = seed_users(server)
     area = call(server, "POST", "/api/areas", human, {"name": "Side", "description": "**Rules** here"})
     thread = make_thread(server, human, area["id"], "vote me")
@@ -790,11 +792,35 @@ def test_area_sidebar_and_quick_vote_from_list(server, browser):
     page = ctx.new_page()
     login(page, server, human)
     try:
+        page.goto(f"{server}/#/thread/{thread['id']}")
+        page.get_by_role("button", name="Toggle inspector").click()
+        expect(page.get_by_role("complementary", name="Thread inspector")).to_be_visible()
         page.goto(f"{server}/#/area/side?state=all")
-        side = page.get_by_role("complementary", name="Area description")
-        expect(side.locator("strong")).to_have_text("Rules")
+        toggle = page.get_by_role("button", name="Toggle area info")
+        expect(toggle).to_have_attribute("aria-pressed", "false")
+        panel = page.get_by_role("complementary", name="Area info")
+        expect(panel).to_be_hidden()
+        expect(page.get_by_role("heading", name="About this area")).to_be_hidden()
+        expect(page.get_by_role("button", name="Edit area")).to_be_hidden()
         row = page.locator(".li.thread").filter(has_text="vote me")
-        assert side.bounding_box()["x"] > row.bounding_box()["x"] + row.bounding_box()["width"] - 1
+        width = row.bounding_box()["width"]
+        toggle.click()
+        expect(panel.locator("strong")).to_have_text("Rules")
+        for label, count in (("Active", "1"), ("Parked", "0"), ("Closed", "1")):
+            expect(panel.get_by_text(re.compile(rf"^{label}\s*{count}$"))).to_be_visible()
+        expect(panel.get_by_role("button", name="Edit area")).to_be_visible()
+        assert row.bounding_box()["width"] == width
+        page.keyboard.press("Escape")
+        expect(panel).to_be_hidden()
+        toggle.click()
+        page.get_by_role("heading", name="Side", exact=True).click()
+        expect(panel).to_be_hidden()
+        for opened in ("true", "false"):
+            page.keyboard.press("Control+k")
+            page.get_by_role("combobox", name="Search threads, areas, screens and actions").fill("Toggle area info")
+            page.get_by_role("option", name=re.compile("^Toggle area info")).click()
+            expect(toggle).to_have_attribute("aria-pressed", opened)
+        expect(panel).to_be_hidden()
 
         page.get_by_role("button", name="Upvote vote me").click()
         expect(row.locator(".imp")).to_contain_text("1")
@@ -805,8 +831,134 @@ def test_area_sidebar_and_quick_vote_from_list(server, browser):
         assert got["importance"] == 1
         expect(page.get_by_role("button", name="Upvote done one")).to_have_count(0)
 
-        page.set_viewport_size({"width": 600, "height": 800})
-        assert side.bounding_box()["y"] > row.bounding_box()["y"]  # stacked below the list
+    finally:
+        ctx.close()
+
+
+def test_area_color_edit_updates_live_preview_and_area_pills(server, browser):
+    human, agent = seed_users(server)
+    area = call(server, "POST", "/api/areas", human, {"name": "Design Lab", "description": "Guidelines"})
+    thread = make_thread(server, agent, area["id"], "Review launch", "Review launch @hanna")
+    ctx, page = open_page(browser, server, human)
+    try:
+        page.goto(f"{server}/#/area/design-lab")
+        toggle = page.get_by_role("button", name="Toggle area info")
+        panel = page.get_by_role("complementary", name="Area info")
+        toggle.click()
+        panel_pill = panel.locator(".area-pill").filter(has_text="Design Lab")
+        initial_color = panel_pill.evaluate("pill => getComputedStyle(pill).backgroundColor")
+        panel.get_by_role("button", name="Edit area").click()
+        expect(panel).to_be_hidden()
+        form = page.locator("main form")
+        colors = form.get_by_role("radiogroup", name="Color")
+        expect(colors.get_by_role("radio")).to_have_count(10)
+        blue = colors.get_by_role("radio", name="Blue", exact=True)
+        expect(blue).to_be_checked()
+        blue.press("ArrowRight")
+        expect(colors.get_by_role("radio", name="Purple", exact=True)).to_be_checked()
+        preview = form.locator(".area-pill").filter(has_text="Design Lab")
+        expect(preview).not_to_have_css("background-color", initial_color)
+        form.get_by_role("button", name="Cancel").click()
+        page.get_by_role("button", name="Discard").click()
+        toggle.click()
+        expect(panel_pill).to_have_css("background-color", initial_color)
+        panel.get_by_role("button", name="Edit area").click()
+        colors.get_by_role("radio", name="Teal", exact=True).check()
+        saved_color = preview.evaluate("pill => getComputedStyle(pill).backgroundColor")
+        assert saved_color != initial_color
+        form.get_by_role("button", name="Save", exact=True).click()
+        expect(form).to_have_count(0)
+        toggle.click()
+        expect(panel_pill).to_have_css("background-color", saved_color)
+
+        for path in ("#/", "#/attention", "#/activity", "#/search?q=Review+launch", f"#/thread/{thread['id']}"):
+            page.goto(server + "/" + path)
+            pill = page.locator("main .area-pill").filter(has_text="Design Lab").first
+            expect(pill).to_be_visible()
+            expect(pill).to_have_css("background-color", saved_color)
+        page.goto(f"{server}/#/search?q=sign")
+        expect(page.get_by_role("link", name="Design Lab", exact=True).locator("mark")).to_have_text("sign")
+        page.goto(f"{server}/#/areas")
+        expect(page.get_by_role("link", name="Design Lab", exact=True)).to_be_visible()
+        expect(page.get_by_text("1 active · 0 closed", exact=True)).to_be_visible()
+    finally:
+        ctx.close()
+
+
+@pytest.mark.parametrize("touch", [False, True])
+def test_park_controls_hide_order_and_restore_threads(server, browser, touch):
+    human, _ = seed_users(server)
+    area = call(server, "POST", "/api/areas", human, {"name": "Plans"})
+    parked = make_thread(server, human, area["id"], "Deferred launch")
+    make_thread(server, human, area["id"], "First live")
+    make_thread(server, human, area["id"], "Second live")
+    finished = make_thread(server, human, area["id"], "Finished")
+    call(server, "POST", f"/api/threads/{finished['id']}/close", human, {"reason": "completed"})
+    call(server, "POST", f"/api/messages/{parked['op_message_id']}/votes", human, {"delta": 5})
+    ctx = browser.new_context(
+        timezone_id="Europe/Paris", reduced_motion="reduce", has_touch=touch,
+        viewport={"width": 390, "height": 650} if touch else None,
+    )
+    page = ctx.new_page()
+    login(page, server, human)
+    try:
+        toggle = page.get_by_role("switch", name="Show parked")
+        expect(toggle).to_have_attribute("aria-checked", "false")
+        expect(toggle).to_contain_text("0")
+        rows = page.locator(".li.thread")
+        deferred = rows.filter(has_text="Deferred launch")
+        park = deferred.get_by_role("button", name="Park")
+        if not touch:
+            park.focus()
+        expect(park).to_have_css("opacity", "1")
+        expect(rows.filter(has_text="Finished").get_by_role("button", name="Park")).to_have_count(0)
+        if touch:
+            park.tap()
+        else:
+            park.click()
+        picker = page.get_by_role("dialog", name="Park until")
+        expect(picker.get_by_role("button", name=re.compile("^Next Monday"))).to_be_visible()
+        expect(picker.get_by_role("button", name=re.compile("^In 2 weeks"))).to_be_visible()
+        expect(picker.get_by_role("button", name=re.compile("^Next month"))).to_be_visible()
+        picker.get_by_role("button", name=re.compile("^Tomorrow")).click()
+        expect(deferred).to_have_count(0)
+        expect(toggle).to_contain_text("1")
+        toggle.click()
+        expect(toggle).to_have_attribute("aria-checked", "true")
+        expect(page).to_have_url(re.compile(r"parked=1"))
+        expect(deferred.get_by_text(re.compile("Parked until"))).to_be_visible()
+        expect(deferred.get_by_role("button", name="Upvote Deferred launch")).to_have_count(0)
+        expect(deferred.get_by_role("button", name="Unpark")).to_be_visible()
+        expect(rows.nth(2)).to_contain_text("Deferred launch")
+
+        page.goto(f"{server}/#/area/plans")
+        expect(deferred).to_have_count(0)
+        expect(toggle).to_contain_text("1")
+        toggle.click()
+        expect(rows.last).to_contain_text("Deferred launch")
+        page.get_by_role("button", name="Upvote First live").click()
+        expect(rows.first).to_contain_text("First live")
+        expect(rows.last).to_contain_text("Deferred launch")
+
+        deferred.get_by_role("link", name="Deferred launch").click()
+        banner = page.get_by_text("Hidden from lists until then.", exact=False)
+        expect(banner).to_be_visible()
+        page.get_by_role("button", name="Toggle inspector").click()
+        page.locator("#insp").get_by_role("button", name=re.compile("Parked until")).click()
+        date_input = picker.get_by_label("Date")
+        date_input.fill("2001-01-01")
+        picker.get_by_role("button", name="Park", exact=True).click()
+        expect(picker.get_by_role("alert")).to_contain_text("after today in Paris")
+        date_input.fill("2099-05-09")
+        picker.get_by_role("button", name="Park", exact=True).click()
+        expect(picker).to_be_hidden()
+        expect(page.get_by_text(re.compile("Parked until.*2099"))).to_have_count(2)
+        page.keyboard.press("Escape")
+        page.get_by_role("button", name="Unpark", exact=True).click()
+        expect(banner).to_be_hidden()
+        page.goto(f"{server}/#/")
+        expect(toggle).to_contain_text("0")
+        expect(deferred.get_by_role("link", name="Deferred launch")).to_be_visible()
     finally:
         ctx.close()
 
@@ -987,7 +1139,7 @@ def test_thread_list_cards_show_meta_and_area_controls(server, browser):
         expect(row.locator(".who")).to_contain_text("agentx")
         expect(row.locator(".who .ag")).to_be_visible()
         expect(row.get_by_label("1 reply")).to_be_visible()
-        expect(row.get_by_role("link", name="Cards")).to_have_attribute("href", "#/area/cards")
+        expect(row.get_by_role("link", name="Cards")).to_have_count(0)
         for sel in ("#sortsel", "#ordersel", "#statesel"):
             if sel == "#ordersel":
                 page.locator("#sortsel").select_option("created")
@@ -1604,6 +1756,7 @@ def test_reply_composer_refresh_area_cancel_and_activity_timeline(server, browse
         expect(page.locator("dialog.confirm")).to_have_count(0)
         # the area form has Cancel, with a confirm when it holds changes
         page.goto(f"{server}/#/area/flow")
+        page.get_by_role("button", name="Toggle area info").click()
         page.get_by_role("button", name="Edit area").click()
         page.get_by_label("Name").fill("Changed")
         page.get_by_role("button", name="Cancel", exact=True).click()
@@ -1821,17 +1974,25 @@ def test_agent_reply_appears_live_and_keeps_reply_draft(server, browser):
     area = call(server, "POST", "/api/areas", human, {"name": "Sessions", "description": "d"})
     thread = make_thread(server, human, area["id"], "S", "hello @agentx")
     op = thread["op_message_id"]
+    call(server, "POST", f"/api/threads/{thread['id']}/park", human, {"until": "2099-05-09"})
     ctx, page = open_page(browser, server, human)
     try:
         page.goto(f"{server}/#/thread/{thread['id']}")
+        banner = page.get_by_text("Hidden from lists until then.", exact=False)
+        expect(banner).to_be_visible()
         # Reply on the OP opens the thread composer: replies to the OP are top-level
         page.get_by_role("button", name="Reply", exact=True).first.click()
         page.locator("#top-reply").fill("half written")
+        page.get_by_role("button", name="Toggle inspector").click()
+        inspector = page.get_by_role("complementary", name="Thread inspector")
+        expect(inspector.get_by_role("button", name=re.compile("Parked until"))).to_be_visible()
         call(server, "POST", f"/api/messages/{op}/reactions", agent, {"emoji": "👀"})
         call(server, "POST", f"/api/threads/{thread['id']}/messages", agent, {"body": "agent answer"})
         call(server, "POST", f"/api/messages/{op}/reactions", agent, {"emoji": "✅"})
         expect(page.locator(".asession .schip")).to_have_text("Done", timeout=8000)
         expect(page.get_by_text("agent answer")).to_have_count(1)
+        expect(banner).to_be_hidden()
+        expect(inspector.get_by_role("button", name=re.compile("Park until"))).to_be_visible()
         expect(page.get_by_role("link", name="reply")).to_be_visible()
         expect(page.locator(f"#m{op} .rx")).to_have_text(["\u2705 1"])
         expect(page.locator("#top-reply")).to_have_value("half written")
