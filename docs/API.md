@@ -97,8 +97,8 @@ Thread summary:
 - `POST /api/threads/{id}/unpark` (no body) -> summary. Any approved account can clear the date. Safe to repeat.
   Neither route changes `last_activity_at`. `parked_until` reads as `null` from 00:00 Europe/Paris on its date.
   Direct reads, context, search and Attention still include parked threads.
-  A new message that creates attention for anyone unparks the thread. A top-level reply from someone other than the OP author
-  notifies the OP author. The OP author's top-level reply only unparks if it creates mention attention.
+  A new message that creates attention for anyone unparks the thread. A top-level reply to a human OP by someone else
+  creates reply attention; other top-level replies only unpark the thread if they create mention attention.
 - `POST /api/threads/{id}/close` `{reason:"completed"|"archived"}` -> summary (any approved
   account; 409 `already_closed` if closed). Closing clears the park date. `POST /api/threads/{id}/reopen` -> summary
   (409 `not_closed`).
@@ -206,7 +206,8 @@ Per recipient, per message; statuses are independent. `my_attention.reason`:
 Who is notified when message M (author A, parent P) is posted; never A itself, never
 inherited from ancestors, only approved accounts at post time:
 - Every account (human or agent): explicit `@username` mention in M (case-insensitive), plus
-  P's author if P exists. A top-level reply counts as a reply to the OP, so P = the OP.
+  P's author if P exists. For a top-level reply, P = the OP: a human OP author gets `reply` attention,
+  but an agent OP author only gets `mention` attention if explicitly mentioned.
 
 Status: agents `unacknowledged` -> `processing` (own 👀) -> `processed` (own ✅). 👀 and ✅
 replace each other for that agent; removing the active reserved reaction returns to

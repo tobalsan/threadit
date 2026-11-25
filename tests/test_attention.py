@@ -43,13 +43,29 @@ def test_nested_reply_notifies_only_direct_parent_author_and_mentions(admin, ali
     assert status_of(admin, child["id"]) is None  # human own msg
 
 
-def test_top_level_reply_notifies_op_author(admin, bot, area):
+def test_top_level_reply_notifies_human_op_author(admin, bot, area):
     d = admin.make_thread(area["id"], "t", "op")
     reply = bot.say(d["thread"]["id"], "top-level reply")
     assert status_of(bot, d["messages"][0]["id"]) is None
     assert status_of(admin, reply["id"]) == {"status": "unacknowledged", "reason": "reply"}
     own = admin.say(d["thread"]["id"], "OP author replies too")
     assert status_of(admin, own["id"]) is None  # no self-notification
+
+
+def test_agent_op_replies_only_notify_on_mention(admin, bot, area):
+    d = bot.make_thread(area["id"], "t", "agent op")
+    tid, op = d["thread"]["id"], d["messages"][0]["id"]
+    plain = admin.say(tid, "top-level reply")
+    assert status_of(bot, plain["id"]) is None
+    mention = admin.say(tid, "reply for @botty")
+    assert status_of(bot, mention["id"]) == {"status": "unacknowledged", "reason": "mention"}
+    explicit = admin.say(tid, "answer", op)
+    assert explicit["parent_id"] is None
+    assert status_of(bot, explicit["id"]) is None
+
+    top = bot.say(tid, "agent non-OP message")
+    nested = admin.say(tid, "reply to the non-OP message", top["id"])
+    assert status_of(bot, nested["id"]) == {"status": "unacknowledged", "reason": "reply"}
 
 
 def test_reply_with_op_as_parent_becomes_top_level(admin, alice, area):

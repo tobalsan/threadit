@@ -117,8 +117,9 @@ def insert_message(
     is_op: bool = False,
     attachment_ids: Sequence[int] = (),
 ) -> int:
-    # A top-level reply answers the OP: it notifies and acknowledges like a direct reply to it.
+    # A top-level reply answers the OP, but only human OP authors get reply attention.
     replied_to = None
+    parent_author_id = None
     if parent_id is not None:
         parent = conn.execute(
             "SELECT id, thread_id, author_id, deleted_at, is_op FROM messages WHERE id = ?",
@@ -133,13 +134,16 @@ def insert_message(
         else:
             require_not_deleted(parent)
             replied_to = parent
+            parent_author_id = parent["author_id"]
     if parent_id is None and not is_op:
         replied_to = conn.execute(
-            "SELECT id, author_id FROM messages"
-            " WHERE thread_id = ? AND is_op = 1 AND deleted_at IS NULL",
+            "SELECT m.id, m.author_id, u.account_type FROM messages m"
+            " JOIN users u ON u.id = m.author_id"
+            " WHERE m.thread_id = ? AND m.is_op = 1 AND m.deleted_at IS NULL",
             (thread["id"],),
         ).fetchone()
-    parent_author_id = replied_to["author_id"] if replied_to else None
+        if replied_to is not None and replied_to["account_type"] == "human":
+            parent_author_id = replied_to["author_id"]
     ts = now()
     message_id = conn.execute(
         "INSERT INTO messages (thread_id, parent_id, author_id, body, created_at, is_op)"
